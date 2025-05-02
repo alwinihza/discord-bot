@@ -39,6 +39,13 @@ func init() {
 		fmt.Println("Error connecting to the database:", err)
 		return
 	}
+
+	// Simple ping to check DB connection
+	err = conn.Ping(context.Background())
+	if err != nil {
+		log.Fatalf("Database ping failed: %v", err)
+	}
+	log.Println("Database connection successful")
 }
 
 var (
@@ -78,7 +85,7 @@ var (
 			var videoList string
 			for rows.Next() {
 				var videoTitle, videoUrl string
-				err = rows.Scan(&videoUrl, &videoTitle)
+				_ = rows.Scan(&videoUrl, &videoTitle)
 				videoList += fmt.Sprintf("%s - %s\n", videoUrl, videoTitle)
 			}
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
