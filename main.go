@@ -70,6 +70,7 @@ var (
 
 	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"list-video": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			fmt.Println("test video")
 			rows, err := conn.Query(context.Background(), "SELECT video_url,video_title FROM karaoke_video")
 			if err != nil {
 				panic(err)
