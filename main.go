@@ -46,6 +46,12 @@ func init() {
 		log.Fatalf("Database ping failed: %v", err)
 	}
 	log.Println("Database connection successful")
+
+	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+		}
+	})
 }
 
 var (
@@ -77,21 +83,43 @@ var (
 
 	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"list-video": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			fmt.Println("test video")
-			rows, err := conn.Query(context.Background(), "SELECT video_url,video_title FROM karaoke_video")
+			rows, err := conn.Query(context.Background(), "SELECT video_url,video_title FROM karaoke_video ORDER BY RANDOM() LIMIT 10 ")
 			if err != nil {
 				panic(err)
 			}
-			var videoList string
+			searchResult := make(map[string][]VideoSong)
+			fields := []*discordgo.MessageEmbedField{}
 			for rows.Next() {
 				var videoTitle, videoUrl string
-				_ = rows.Scan(&videoUrl, &videoTitle)
-				videoList += fmt.Sprintf("%s - %s\n", videoUrl, videoTitle)
+				rows.Scan(&videoUrl, &videoTitle)
+				temp := VideoSong{
+					title: videoTitle,
+					url:   fmt.Sprintf("https://youtu.be/%s", videoUrl),
+				}
+				searchResult[videoTitle] = append(searchResult[videoTitle], temp)
+			}
+
+			for k, s := range searchResult {
+				value := ""
+				for _, v := range s {
+					value += fmt.Sprintf("[%s](%s) \n", v.title, v.url)
+				}
+				fields = append(fields, &discordgo.MessageEmbedField{
+					Name:   k,
+					Value:  value,
+					Inline: false,
+				})
 			}
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				// Ignore type for now, they will be discussed in "responses"
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: videoList,
+					Embeds: []*discordgo.MessageEmbed{
+						{
+							Title:  "Lists Karaoke",
+							Fields: fields,
+						},
+					},
 				},
 			})
 		},
@@ -176,13 +204,6 @@ var (
 	}
 )
 
-func init() {
-	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
-			h(s, i)
-		}
-	})
-}
 func main() {
 	defer conn.Close(context.Background())
 	s.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
@@ -211,7 +232,7 @@ func main() {
 
 	// Wait for the bot to be killed
 	killChannel = make(chan os.Signal, 1)
-	signal.Notify(killChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	signal.Notify(killChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, syscall.SIGTERM)
 	<-killChannel
 
 	log.Println("Terminating bot")
