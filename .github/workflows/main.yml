@@ -1,0 +1,31 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main  # Adjust if needed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        id: ssh-agent  # <-- Add ID here
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Upload .env using echo
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
+            echo 'SUPABASE_URL=${{ secrets.SUPABASE_URL }}' > ${{ secrets.DEPLOY_PATH }}/.env && \
+            echo 'TOKEN=${{ secrets.TOKEN }}' >> ${{ secrets.DEPLOY_PATH }}/.env"
+
+      - name: Deploy service to server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "cd ${{ secrets.DEPLOY_PATH }} && git pull && docker compose up -d --build"
