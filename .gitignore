@@ -1,3 +1,5 @@
 .env
 fly.toml
 tmp/
+.continue/
+.air.toml
