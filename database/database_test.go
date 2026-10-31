@@ -159,3 +159,39 @@ func TestSearchFindsEverythingTheOriginalTitlesMatched(t *testing.T) {
 		}
 	}
 }
+
+func TestVersionsHoldOnlyStyleTags(t *testing.T) {
+	db := openTestDB(t)
+	songs, _, err := db.FetchSearchResult(context.Background(), "eiyuu no shihen", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]bool{}
+	for _, s := range songs {
+		labels[s.Label()] = true
+		if s.Note == "" && s.Version == "acapella" {
+			t.Errorf("%q lost its cover note", s.Label())
+		}
+	}
+	if !labels["Eiyuu no Shihen (acapella) - Mirai Kodai Gakudan"] {
+		t.Fatalf("labels %v", labels)
+	}
+	var full int
+	if err := db.db.QueryRow("SELECT count(*) FROM karaoke_song WHERE version LIKE '%full%' OR version LIKE '%ver.%'").Scan(&full); err != nil {
+		t.Fatal(err)
+	}
+	if full != 0 {
+		t.Fatalf("%d versions still say full or ver.", full)
+	}
+}
+
+func TestSearchMatchesNote(t *testing.T) {
+	db := openTestDB(t)
+	_, total, err := db.FetchSearchResult(context.Background(), "re:zero", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total < 7 {
+		t.Fatalf("searching a series name found %d songs", total)
+	}
+}
