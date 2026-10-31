@@ -39,7 +39,7 @@ func TestStatsEmbedFitsDiscordLimitsForEverySong(t *testing.T) {
 			t.Fatalf("%s: embed has %d chars, Discord allows 6000", song.Label(), total)
 		}
 	}
-	if len(songs) != 457 {
-		t.Fatalf("checked %d songs, want 457", len(songs))
+	if len(songs) != 473 {
+		t.Fatalf("checked %d songs, want 473", len(songs))
 	}
 }

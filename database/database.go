@@ -114,7 +114,7 @@ func (db *DB) FetchVideos(ctx context.Context, page, itemsPerPage int64) ([]mode
 	}
 
 	rows, err := db.db.QueryContext(ctx,
-		"SELECT video_url, video_title FROM karaoke_video ORDER BY video_title, id LIMIT ? OFFSET ?",
+		"SELECT video_url, video_title, kind FROM karaoke_video ORDER BY video_title, id LIMIT ? OFFSET ?",
 		itemsPerPage, (page-1)*itemsPerPage)
 	if err != nil {
 		return nil, 0, fmt.Errorf("fetch videos: %w", err)
@@ -123,11 +123,11 @@ func (db *DB) FetchVideos(ctx context.Context, page, itemsPerPage int64) ([]mode
 
 	var videos []models.VideoSong
 	for rows.Next() {
-		var videoID, title string
-		if err := rows.Scan(&videoID, &title); err != nil {
+		var videoID, title, kind string
+		if err := rows.Scan(&videoID, &title, &kind); err != nil {
 			return nil, 0, fmt.Errorf("read video: %w", err)
 		}
-		videos = append(videos, models.VideoSong{Title: title, URL: "https://youtu.be/" + videoID})
+		videos = append(videos, models.VideoSong{Title: title, URL: "https://youtu.be/" + videoID, Kind: kind})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("read videos: %w", err)
