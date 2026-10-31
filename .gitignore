@@ -3,3 +3,6 @@ fly.toml
 tmp/
 .continue/
 .air.toml
+*.db
+*.db-wal
+*.db-shm

@@ -1,4 +1,3 @@
-// internal/embeds/embeds.go
 package embeds
 
 import (
@@ -8,46 +7,50 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+const (
+	embedColor     = 0x00BFFF
+	footerText     = "Use the buttons below to navigate through the list!"
+	maxTitleLength = 256
+)
+
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
+func pagedEmbed(title string, fields []*discordgo.MessageEmbedField, currentPage, totalPages int64) *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{
+		Title:       truncate(title, maxTitleLength),
+		Description: fmt.Sprintf("Page %d/%d", currentPage, totalPages),
+		Color:       embedColor,
+		Fields:      fields,
+		Footer:      &discordgo.MessageEmbedFooter{Text: footerText},
+	}
+}
+
 func CreateVideoEmbed(videos []models.VideoSong, currentPage, totalPages int64) *discordgo.MessageEmbed {
 	fields := make([]*discordgo.MessageEmbedField, len(videos))
 	for i, video := range videos {
 		fields[i] = &discordgo.MessageEmbedField{
-			Name:   video.Title,
-			Value:  fmt.Sprintf("[Watch Video](%s)", video.URL),
-			Inline: false,
+			Name:  truncate(video.Title, 256),
+			Value: fmt.Sprintf("[Watch Video](%s)", video.URL),
 		}
 	}
-
-	return &discordgo.MessageEmbed{
-		Title:       "Karaoke Video List",
-		Description: fmt.Sprintf("Page %d/%d", currentPage, totalPages),
-		Color:       0x00BFFF,
-		Fields:      fields,
-		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Use the buttons below to navigate through the list!",
-		},
-	}
+	return pagedEmbed("Karaoke Video List", fields, currentPage, totalPages)
 }
 
-func CreateSongEmbed(videos []models.SearchResult, currentPage, totalPages int64) *discordgo.MessageEmbed {
-	fields := make([]*discordgo.MessageEmbedField, len(videos))
-	for i, video := range videos {
+func CreateSongEmbed(songs []models.SearchResult, query string, currentPage, totalPages int64) *discordgo.MessageEmbed {
+	fields := make([]*discordgo.MessageEmbedField, len(songs))
+	for i, song := range songs {
 		fields[i] = &discordgo.MessageEmbedField{
-			Name:   video.VideoTitle,
-			Value:  fmt.Sprintf("[%s - %s](%s)", video.Timestamp, video.Title, video.URL),
-			Inline: false,
+			Name:  truncate(song.VideoTitle, 256),
+			Value: fmt.Sprintf("[%s - %s](%s)", song.Timestamp, truncate(song.Label(), 900), song.URL),
 		}
 	}
-
-	return &discordgo.MessageEmbed{
-		Title:       "Search Result",
-		Description: fmt.Sprintf("Page %d/%d", currentPage, totalPages),
-		Color:       0x00BFFF,
-		Fields:      fields,
-		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Use the buttons below to navigate through the list!",
-		},
-	}
+	return pagedEmbed(fmt.Sprintf("Search results for %q", query), fields, currentPage, totalPages)
 }
 
 func CreatePaginationButtons(currentPage, totalPages int64, key string) []discordgo.MessageComponent {
@@ -55,22 +58,21 @@ func CreatePaginationButtons(currentPage, totalPages int64, key string) []discor
 		discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{
 				discordgo.Button{
-					Emoji:    discordgo.ComponentEmoji{Name: "⬅️"},
+					Emoji:    &discordgo.ComponentEmoji{Name: "⬅️"},
 					Style:    discordgo.PrimaryButton,
 					CustomID: key + "prev_page",
 					Disabled: currentPage <= 1,
 				},
 				discordgo.Button{
-					Emoji:    discordgo.ComponentEmoji{Name: "➡️"},
+					Emoji:    &discordgo.ComponentEmoji{Name: "➡️"},
 					Style:    discordgo.PrimaryButton,
 					CustomID: key + "next_page",
 					Disabled: currentPage >= totalPages,
 				},
 				discordgo.Button{
-					Emoji:    discordgo.ComponentEmoji{Name: "❌"},
+					Emoji:    &discordgo.ComponentEmoji{Name: "❌"},
 					Style:    discordgo.SecondaryButton,
 					CustomID: "close",
-					Disabled: false,
 				},
 			},
 		},

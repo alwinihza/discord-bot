@@ -1,32 +1,36 @@
-name: Deploy to Server
+name: Test and deploy
 
 on:
   push:
     branches:
-      - main  # Adjust if needed
+      - main
+  pull_request:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up SSH
-        id: ssh-agent
-        uses: webfactory/ssh-agent@v0.5.3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          silent: true
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
 
-      - name: Upload .env using echo
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
-            echo 'SUPABASE_URL=${{ secrets.SUPABASE_URL }}' > ${{ secrets.DEPLOY_PATH }}/.env && \
-            echo 'TOKEN=${{ secrets.TOKEN }}' >> ${{ secrets.DEPLOY_PATH }}/.env"
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # The devbox's own runner. Only pushes to main reach it, never fork PRs.
+    runs-on: [self-hosted, discord-bot]
+    concurrency: deploy
+    env:
+      BOT_ENV_FILE: /home/alwinihza/project/discord-bot/.env
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Deploy service to server
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && git pull && docker compose up -d --build"
+      - name: Deploy
+        run: docker compose --env-file "$BOT_ENV_FILE" up -d --build --remove-orphans
+
+      - name: Wait for the bot to log in
+        run: timeout 60 sh -c 'until docker compose --env-file "$BOT_ENV_FILE" logs discord-bot | grep -q "Bot is ready"; do sleep 2; done'

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -13,46 +14,53 @@ import (
 	"github.com/alwinihza/discord-bot/pkg/state"
 )
 
-var (
-	killChannel       chan os.Signal
-	paginationManager = state.NewPaginationManager()
-)
-
 func main() {
-	// Initialize database connection
-	db, err := database.NewDB(os.Getenv("SUPABASE_URL"))
-	if err != nil {
-		log.Fatalf("Database connection failed: %v", err)
+	if err := run(); err != nil {
+		log.Fatal(err)
 	}
-	defer db.Close(context.Background())
+	log.Println("Bot stopped")
+}
+
+func run() error {
+	token, dbPath := os.Getenv("TOKEN"), os.Getenv("DATABASE_PATH")
+	if token == "" || dbPath == "" {
+		return errors.New("TOKEN and DATABASE_PATH must be set")
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	db, err := database.Open(ctx, dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 
 	pm := state.NewPaginationManager()
-
-	// Initialize bot
-	discordBot, err := bot.NewBot(os.Getenv("TOKEN"), db, pm)
-	if err != nil {
-		log.Fatalf("Bot initialization failed: %v", err)
-	}
-
-	// Start bot
-	err = discordBot.Start()
-	if err != nil {
-		log.Fatalf("Cannot open session: %v", err)
-	}
-	defer discordBot.Stop()
-
-	// Wait for termination signal
-	killChannel = make(chan os.Signal, 1)
-	signal.Notify(killChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, syscall.SIGTERM)
-	<-killChannel
 	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
+		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
-
-		for range ticker.C {
-			paginationManager.Cleanup(24 * time.Hour)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				pm.Cleanup(24 * time.Hour)
+			}
 		}
 	}()
 
-	log.Println("Terminating bot")
+	discordBot, err := bot.NewBot(token, db, pm)
+	if err != nil {
+		return err
+	}
+	if err := discordBot.Start(); err != nil {
+		return err
+	}
+	defer discordBot.Stop()
+
+	log.Println("Bot is running, press Ctrl+C to stop")
+	<-ctx.Done()
+	log.Println("Shutting down")
+	return nil
 }
