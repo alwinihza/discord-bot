@@ -65,3 +65,16 @@ delete the volume. **This also deletes every song added by hand since.**
 ```sh
 docker compose down -v && docker compose up -d --build
 ```
+
+## Backups
+
+Every deploy first snapshots the live database to `~/backups/discord-bot/` on
+the devbox, keeping the newest 30. To restore one:
+
+```sh
+docker compose cp ~/backups/discord-bot/<file>.db discord-bot:/tmp/restore.db
+docker compose exec discord-bot sqlite3 /data/karaoke.db ".restore /tmp/restore.db"
+docker compose restart discord-bot
+```
+
+These copies live on the devbox itself, so they don't survive losing its disk.

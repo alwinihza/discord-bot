@@ -29,6 +29,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Back up the database before deploying
+        run: |
+          backups="$HOME/backups/discord-bot"
+          mkdir -p "$backups"
+          if [ -n "$(docker compose --env-file "$BOT_ENV_FILE" ps -q discord-bot)" ]; then
+            docker compose --env-file "$BOT_ENV_FILE" exec -T discord-bot sqlite3 /data/karaoke.db ".backup /tmp/snap.db"
+            docker compose --env-file "$BOT_ENV_FILE" cp discord-bot:/tmp/snap.db "$backups/karaoke-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}.db"
+            docker compose --env-file "$BOT_ENV_FILE" exec -T discord-bot rm /tmp/snap.db
+          fi
+          ls -1t "$backups"/karaoke-*.db 2>/dev/null | tail -n +31 | xargs -r rm --
+
       - name: Deploy
         run: docker compose --env-file "$BOT_ENV_FILE" up -d --build --remove-orphans
 
