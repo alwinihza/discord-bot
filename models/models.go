@@ -1,10 +1,6 @@
 package models
 
-import (
-	"time"
-
-	"github.com/bwmarrin/discordgo"
-)
+import "time"
 
 type VideoSong struct {
 	Title string
@@ -14,16 +10,36 @@ type VideoSong struct {
 type SearchResult struct {
 	VideoTitle string
 	Title      string
+	Artist     string
+	Version    string
 	URL        string
 	Timestamp  string
 }
 
+// Label renders the song as "Title (version) - Artist", omitting empty parts.
+func (s SearchResult) Label() string {
+	label := s.Title
+	if s.Version != "" {
+		label += " (" + s.Version + ")"
+	}
+	if s.Artist != "" {
+		label += " - " + s.Artist
+	}
+	return label
+}
+
+// PaginationKind is also the custom-ID prefix of that view's buttons.
+type PaginationKind string
+
+const (
+	KindList   PaginationKind = "list"
+	KindSearch PaginationKind = "search"
+)
+
 type PaginationState struct {
-	CurrentPage  int64
-	TotalPages   int64
-	TotalItems   int64
-	ItemsPerPage int64
-	SearchValue  string
-	Interaction  *discordgo.Interaction
-	CreatedAt    time.Time
+	Kind        PaginationKind
+	CurrentPage int64
+	TotalPages  int64
+	SearchValue string
+	CreatedAt   time.Time
 }

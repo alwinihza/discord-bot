@@ -3,30 +3,44 @@ name: Deploy to Server
 on:
   push:
     branches:
-      - main  # Adjust if needed
+      - main
+  pull_request:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
 
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
       - name: Set up SSH
-        id: ssh-agent
-        uses: webfactory/ssh-agent@v0.5.3
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          silent: true
 
-      - name: Upload .env using echo
+      - name: Upload .env
+        env:
+          TOKEN: ${{ secrets.TOKEN }}
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
-            echo 'SUPABASE_URL=${{ secrets.SUPABASE_URL }}' > ${{ secrets.DEPLOY_PATH }}/.env && \
-            echo 'TOKEN=${{ secrets.TOKEN }}' >> ${{ secrets.DEPLOY_PATH }}/.env"
+          printf 'TOKEN=%s\n' "$TOKEN" |
+            ssh -o StrictHostKeyChecking=accept-new "$TARGET" "umask 077 && cat > '$DEPLOY_PATH/.env'"
 
       - name: Deploy service to server
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && git pull && docker compose up -d --build"
+          ssh -o StrictHostKeyChecking=accept-new "$TARGET" \
+            "cd '$DEPLOY_PATH' && git pull && docker compose up -d --build"

@@ -3,3 +3,5 @@ tmp/
 .env
 .git/
 fly.toml
+scripts/
+*.db

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -14,7 +15,11 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-const ITEMS_PER_PAGE = 10
+const (
+	itemsPerPage = 10
+	// Discord drops an interaction that is not answered within 3 seconds.
+	queryTimeout = 2500 * time.Millisecond
+)
 
 type CommandHandler struct {
 	db *database.DB
@@ -22,188 +27,186 @@ type CommandHandler struct {
 }
 
 func NewCommandHandler(db *database.DB, pm *state.PaginationManager) *CommandHandler {
-	return &CommandHandler{
-		db: db,
-		pm: pm,
-	}
+	return &CommandHandler{db: db, pm: pm}
 }
 
-// Add this to your CommandHandler struct
 func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"list-video": h.ListVideo(),
-		"random":     h.Random(),
-		"search":     h.Search(),
-		// Add other commands here
+		"list-video": h.ListVideo,
+		"random":     h.Random,
+		"search":     h.Search,
 	}
 }
 
 func (h *CommandHandler) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	switch i.MessageComponentData().CustomID {
-	case "listprev_page", "listnext_page", "close":
-		h.HandlePagination(s, i)
-	case "searchprev_page", "searchnext_page":
-		h.HandleSearchPagination(s, i)
-	case "random":
-		h.HandleRandom(s, i)
-	default:
-		return
-	}
-}
-
-func (h *CommandHandler) ListVideo() func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		// Fetch initial data
-		videos, totalCount, err := h.db.FetchVideos(1, ITEMS_PER_PAGE)
-		if err != nil {
-			shared.RespondWithError(s, i, "Failed to fetch videos")
-			return
-		}
-
-		totalPages := (totalCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE
-		currentPage := int64(1)
-
-		// Create initial response
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Embeds:     []*discordgo.MessageEmbed{embeds.CreateVideoEmbed(videos, currentPage, totalPages)},
-				Components: embeds.CreatePaginationButtons(currentPage, totalPages, "list"),
-			},
-		})
-
-		if err != nil {
-			log.Printf("Error sending initial response: %v", err)
-			return
-		}
-
-		// Store pagination state
-		msg, _ := s.InteractionResponse(i.Interaction)
-		h.pm.Set(msg.ID, &models.PaginationState{
-			CurrentPage:  currentPage,
-			TotalPages:   totalPages,
-			TotalItems:   totalCount,
-			ItemsPerPage: ITEMS_PER_PAGE,
-			Interaction:  i.Interaction,
-			CreatedAt:    time.Now(),
-		})
-	}
-}
-
-func (h *CommandHandler) HandlePagination(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	log.Printf("Handling pagination for message ID: %s", i.Message.ID)
-
-	msgID := i.Message.ID
-
-	state, exists := h.pm.Get(msgID)
-	if !exists {
-		shared.RespondWithError(s, i, "Pagination expired or invalid")
-		return
-	}
-
-	var newPage int64
-	switch i.MessageComponentData().CustomID {
-	case "listprev_page":
-		newPage = state.CurrentPage - 1
-	case "listnext_page":
-		newPage = state.CurrentPage + 1
+	switch id := i.MessageComponentData().CustomID; id {
 	case "close":
-		fmt.Println("closing...")
-		err := s.InteractionResponseDelete(state.Interaction)
-		if err != nil {
-			log.Printf("Error responding to cancel: %v", err)
-		}
-		h.pm.Delete(msgID) // Clean up the session
-		return
+		h.handleClose(s, i)
+	case "random":
+		h.respondRandom(s, i, discordgo.InteractionResponseUpdateMessage)
 	default:
-		return
+		for _, kind := range []models.PaginationKind{models.KindList, models.KindSearch} {
+			switch id {
+			case string(kind) + "prev_page":
+				h.handlePage(s, i, kind, -1)
+			case string(kind) + "next_page":
+				h.handlePage(s, i, kind, +1)
+			}
+		}
 	}
+}
 
-	var (
-		videos []models.VideoSong
-		err    error
-	)
+func (h *CommandHandler) ListVideo(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	h.startPagination(s, i, models.PaginationState{Kind: models.KindList})
+}
 
-	if strings.HasPrefix(i.Message.Embeds[0].Title, "Karaoke Video List") {
-		videos, _, err = h.db.FetchVideos(newPage, state.ItemsPerPage)
+func (h *CommandHandler) Search(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	for _, opt := range i.ApplicationCommandData().Options {
+		if opt.Name == "search" {
+			h.startPagination(s, i, models.PaginationState{
+				Kind:        models.KindSearch,
+				SearchValue: strings.TrimSpace(opt.StringValue()),
+			})
+			return
+		}
 	}
+	shared.RespondWithError(s, i, "Please provide a song title to search for")
+}
 
+func (h *CommandHandler) Random(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	h.respondRandom(s, i, discordgo.InteractionResponseChannelMessageWithSource)
+}
+
+// fetchPage loads one page of st's view and returns its embed and the
+// current page count, so pagination tracks rows added after the first page.
+func (h *CommandHandler) fetchPage(st models.PaginationState, page int64) (*discordgo.MessageEmbed, int64, int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	switch st.Kind {
+	case models.KindList:
+		videos, total, err := h.db.FetchVideos(ctx, page, itemsPerPage)
+		pages := pageCount(total)
+		return embeds.CreateVideoEmbed(videos, page, pages), total, pages, err
+	case models.KindSearch:
+		songs, total, err := h.db.FetchSearchResult(ctx, st.SearchValue, page, itemsPerPage)
+		pages := pageCount(total)
+		return embeds.CreateSongEmbed(songs, st.SearchValue, page, pages), total, pages, err
+	}
+	return nil, 0, 0, fmt.Errorf("unknown pagination kind %q", st.Kind)
+}
+
+func pageCount(total int64) int64 {
+	return max(1, (total+itemsPerPage-1)/itemsPerPage)
+}
+
+func (h *CommandHandler) startPagination(s *discordgo.Session, i *discordgo.InteractionCreate, st models.PaginationState) {
+	embed, total, pages, err := h.fetchPage(st, 1)
 	if err != nil {
-		log.Printf("Error fetching paginated data: %v", err)
-		shared.RespondWithError(s, i, "Failed to fetch paginated data")
+		log.Printf("Error fetching %s page: %v", st.Kind, err)
+		shared.RespondWithError(s, i, "Failed to fetch data, please try again")
+		return
+	}
+	if total == 0 {
+		msg := "No karaoke videos yet"
+		if st.Kind == models.KindSearch {
+			msg = fmt.Sprintf("No songs found for %q", st.SearchValue)
+		}
+		shared.RespondWithError(s, i, msg)
 		return
 	}
 
-	buttons := embeds.CreatePaginationButtons(newPage, state.TotalPages, "list")
-
-	// Acknowledge the interaction
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embeds.CreateVideoEmbed(videos, newPage, state.TotalPages)},
-			Components: buttons,
-			Flags:      discordgo.MessageFlagsEphemeral,
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: embeds.CreatePaginationButtons(1, pages, string(st.Kind)),
 		},
 	})
-
 	if err != nil {
-		log.Printf("Error updating interaction: %v", err)
+		log.Printf("Error sending %s response: %v", st.Kind, err)
 		return
 	}
-	log.Printf("Successfully updated to page %d", newPage)
-	success := h.pm.UpdateCurrentPage(msgID, newPage, i.Interaction)
-	if !success {
-		log.Printf("Error updating state: %v", err)
-	}
-}
 
-func (h *CommandHandler) Random() func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		ret, err := h.db.FetchRandomSong()
-		if err != nil {
-			log.Printf("Error fetch random song: %v", err)
-			return
-		}
-
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("🎵 **%s**\n%s", ret.Title, ret.URL),
-				Components: []discordgo.MessageComponent{
-					discordgo.ActionsRow{
-						Components: []discordgo.MessageComponent{
-							discordgo.Button{
-								Label:    "Get Another Random Song",
-								Style:    discordgo.PrimaryButton,
-								Emoji:    discordgo.ComponentEmoji{Name: "🎲"}, // Emoji defined here
-								CustomID: "random",
-							},
-						},
-					},
-				},
-			},
-		})
-	}
-}
-
-func (h *CommandHandler) HandleRandom(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	ret, err := h.db.FetchRandomSong()
+	msg, err := s.InteractionResponse(i.Interaction)
 	if err != nil {
-		log.Printf("Error fetch random song: %v", err)
+		log.Printf("Error reading %s response message: %v", st.Kind, err)
+		return
+	}
+	st.CurrentPage, st.TotalPages, st.CreatedAt = 1, pages, time.Now()
+	h.pm.Set(msg.ID, st)
+}
+
+func (h *CommandHandler) handlePage(s *discordgo.Session, i *discordgo.InteractionCreate, kind models.PaginationKind, delta int64) {
+	msgID := i.Message.ID
+	st, ok := h.pm.Get(msgID)
+	if !ok || st.Kind != kind {
+		shared.RespondWithError(s, i, "This list has expired, please run the command again")
+		return
+	}
+
+	page := min(max(1, st.CurrentPage+delta), st.TotalPages)
+	embed, _, pages, err := h.fetchPage(st, page)
+	if err != nil {
+		log.Printf("Error fetching %s page %d: %v", kind, page, err)
+		shared.RespondWithError(s, i, "Failed to fetch data, please try again")
 		return
 	}
 
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("🎵 **%s**\n%s", ret.Title, ret.URL),
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: embeds.CreatePaginationButtons(page, pages, string(kind)),
+		},
+	})
+	if err != nil {
+		log.Printf("Error updating %s message: %v", kind, err)
+		return
+	}
+	st.CurrentPage, st.TotalPages = page, pages
+	h.pm.Set(msgID, st)
+}
+
+func (h *CommandHandler) handleClose(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	h.pm.Delete(i.Message.ID)
+	// Acknowledge this click, then delete through its own token: for a component
+	// interaction the "original response" is the message the button sits on.
+	// The token of the slash command that created it expires after 15 minutes.
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredMessageUpdate,
+	})
+	if err != nil {
+		log.Printf("Error acknowledging close: %v", err)
+		return
+	}
+	if err := s.InteractionResponseDelete(i.Interaction); err != nil {
+		log.Printf("Error deleting message: %v", err)
+	}
+}
+
+func (h *CommandHandler) respondRandom(s *discordgo.Session, i *discordgo.InteractionCreate, respType discordgo.InteractionResponseType) {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	song, err := h.db.FetchRandomSong(ctx)
+	if err != nil {
+		log.Printf("Error fetching random song: %v", err)
+		shared.RespondWithError(s, i, "Failed to fetch a random song, please try again")
+		return
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: respType,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("🎵 **%s**\n%s", song.Label(), song.URL),
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.Button{
 							Label:    "Get Another Random Song",
 							Style:    discordgo.PrimaryButton,
-							Emoji:    discordgo.ComponentEmoji{Name: "🎲"},
+							Emoji:    &discordgo.ComponentEmoji{Name: "🎲"},
 							CustomID: "random",
 						},
 					},
@@ -211,113 +214,7 @@ func (h *CommandHandler) HandleRandom(s *discordgo.Session, i *discordgo.Interac
 			},
 		},
 	})
-
 	if err != nil {
-		log.Printf("Error updating interaction: %v", err)
-		return
+		log.Printf("Error sending random song: %v", err)
 	}
 }
-
-func (h *CommandHandler) Search() func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		options := i.ApplicationCommandData().Options
-		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
-
-		for _, opt := range options {
-			optionMap[opt.Name] = opt
-		}
-
-		if option, ok := optionMap["search"]; ok {
-			search := option.StringValue()
-
-			// Fetch initial page of results
-			videos, totalCount, err := h.db.FetchSearchResult(search, 1, ITEMS_PER_PAGE)
-			if err != nil {
-				shared.RespondWithError(s, i, "Failed to fetch videos")
-				return
-			}
-
-			totalPages := (totalCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE
-			currentPage := int64(1)
-
-			// Create and send initial response
-			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Embeds:     []*discordgo.MessageEmbed{embeds.CreateSongEmbed(videos, currentPage, totalPages)},
-					Components: embeds.CreatePaginationButtons(currentPage, totalPages, "search"),
-				},
-			})
-
-			if err != nil {
-				log.Printf("Error sending initial response: %v", err)
-				return
-			}
-
-			// Store pagination state for future interactions
-			msg, _ := s.InteractionResponse(i.Interaction)
-			h.pm.Set(msg.ID, &models.PaginationState{
-				CurrentPage:  currentPage,
-				TotalPages:   totalPages,
-				TotalItems:   totalCount,
-				ItemsPerPage: ITEMS_PER_PAGE,
-				Interaction:  i.Interaction,
-				SearchValue:  search,
-				CreatedAt:    time.Now(),
-			})
-		}
-	}
-}
-
-func (h *CommandHandler) HandleSearchPagination(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	log.Printf("Handling pagination for message ID: %s", i.Message.ID)
-
-	msgID := i.Message.ID
-
-	state, exists := h.pm.Get(msgID)
-	if !exists {
-		shared.RespondWithError(s, i, "Pagination expired or invalid")
-		return
-	}
-
-	var newPage int64
-	switch i.MessageComponentData().CustomID {
-	case "searchprev_page":
-		newPage = state.CurrentPage - 1
-	case "searchnext_page":
-		newPage = state.CurrentPage + 1
-	default:
-		return
-	}
-
-	// Fetch initial page of results
-	videos, _, err := h.db.FetchSearchResult(state.SearchValue, newPage, ITEMS_PER_PAGE)
-	if err != nil {
-		shared.RespondWithError(s, i, "Failed to fetch videos")
-		return
-	}
-
-	buttons := embeds.CreatePaginationButtons(newPage, state.TotalPages, "search")
-
-	// Acknowledge the interaction
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embeds.CreateSongEmbed(videos, newPage, state.TotalPages)},
-			Components: buttons,
-			Flags:      discordgo.MessageFlagsEphemeral,
-		},
-	})
-
-	if err != nil {
-		log.Printf("Error updating interaction: %v", err)
-		return
-	}
-	log.Printf("Successfully updated to page %d", newPage)
-	success := h.pm.UpdateCurrentPage(msgID, newPage, i.Interaction)
-	if !success {
-		log.Printf("Error updating state: %v", err)
-	}
-}
-
-// Add other command handlers...

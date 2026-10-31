@@ -1,13 +1,13 @@
-# Stage 1: Build the Go application
-FROM golang:1.24 AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /bot .
 
-# Stage 2: Create a minimal image
-FROM alpine:latest
-WORKDIR /root/
-COPY --from=builder /app/main .
-CMD ["./main"]
+FROM alpine:3.22
+RUN adduser -D -H bot && mkdir /data && chown bot /data
+COPY --from=builder /bot /usr/local/bin/bot
+USER bot
+VOLUME /data
+CMD ["bot"]
