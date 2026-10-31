@@ -35,6 +35,7 @@ func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Sessi
 		"list-video": h.ListVideo,
 		"random":     h.Random,
 		"search":     h.Search,
+		"stats":      h.Stats,
 	}
 }
 

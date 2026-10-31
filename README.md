@@ -1,8 +1,12 @@
 # Karaoke Discord bot
 
-Slash commands `/list-video`, `/search` and `/random` over the karaoke streams
-and the songs sung in them. Data lives in a SQLite file the bot creates and
-seeds from `database/seed.sql` on first start.
+Slash commands `/list-video`, `/search`, `/random` and `/stats` over the karaoke
+streams and the songs sung in them. Data lives in a SQLite file the bot creates
+and seeds from `database/seed.sql` on first start, then upgrades with
+`database/migrations/NNN_*.sql`, each applied once in order.
+
+The bot registers its slash commands from `internal/commands/definitions.go`
+on every start, replacing whatever Discord had, so add new commands there.
 
 ## Run
 
@@ -34,17 +38,22 @@ docker compose exec discord-bot sqlite3 /data/karaoke.db
 INSERT INTO karaoke_video (id, video_title, video_url, published_at)
 VALUES (lower(hex(randomblob(16))), '【Karaoke】Stream title', 'dQw4w9WgXcQ', '2026-11-01 20:00:00+00');
 
-INSERT INTO karaoke_song (id, song_title, artist, version, original_title, timestamp, video_id)
-SELECT lower(hex(randomblob(16))), 'Kokoronashi', 'Chouchou-P', 'short ver.',
-       'GUMI - Kokoronashi (short ver.)', '1:04:48', id
+INSERT INTO karaoke_song (id, song_title, artist, version, note, original_title, timestamp, video_id)
+SELECT lower(hex(randomblob(16))), 'Kokoronashi', 'Chouchou-P', 'short', 'Hanatan cover',
+       'GUMI - Kokoronashi (short)', '1:04:48', id
 FROM karaoke_video WHERE video_url = 'dQw4w9WgXcQ';
 ```
 
 - `video_url` is the 11-character YouTube video ID, not a full URL.
 - `timestamp` is `H:MM:SS` from the start of the stream.
-- `artist` is the original performer, `version` holds notes such as
-  `short ver.` or `Hanatan cover`. Search also reads `original_title`, so put
-  any extra names viewers might search for there (vocal synth, cover singer).
+- `artist` is the original performer.
+- `version` is short playing-style tags shown next to the title, such as
+  `short`, `acapella`, `duet` or `take 2`. Leave it empty for a normal full
+  performance.
+- `note` is context kept out of the title, such as the cover it follows
+  (`Hanatan cover`) or the series (`Re:Zero ED`). `/stats` shows it.
+- Search reads title, artist, version, note and `original_title`, so put any
+  extra names viewers might search for in `original_title` (vocal synth).
 
 Writing while the bot runs is fine.
 
@@ -56,14 +65,3 @@ delete the volume. **This also deletes every song added by hand since.**
 ```sh
 docker compose down -v && docker compose up -d --build
 ```
-
-`database/seed.sql` is generated from the last Supabase dump (not in the
-repo) and `scripts/song-cleanup.tsv`, which maps every original song title to
-its artist, title and version:
-
-```sh
-python3 scripts/extract-seed.py <dump.sql.gz> scripts/song-cleanup.tsv > database/seed.sql
-```
-
-Fix a song's artist or title by editing its row in `song-cleanup.tsv` and
-regenerating. Rows with `confidence` = `unsure` are the ones worth checking.

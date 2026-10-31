@@ -13,7 +13,8 @@ const (
 	maxTitleLength = 256
 )
 
-func truncate(s string, n int) string {
+// Truncate shortens s to at most n runes, ending with "…" when cut.
+func Truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
@@ -23,7 +24,7 @@ func truncate(s string, n int) string {
 
 func pagedEmbed(title string, fields []*discordgo.MessageEmbedField, currentPage, totalPages int64) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
-		Title:       truncate(title, maxTitleLength),
+		Title:       Truncate(title, maxTitleLength),
 		Description: fmt.Sprintf("Page %d/%d", currentPage, totalPages),
 		Color:       embedColor,
 		Fields:      fields,
@@ -35,7 +36,7 @@ func CreateVideoEmbed(videos []models.VideoSong, currentPage, totalPages int64) 
 	fields := make([]*discordgo.MessageEmbedField, len(videos))
 	for i, video := range videos {
 		fields[i] = &discordgo.MessageEmbedField{
-			Name:  truncate(video.Title, 256),
+			Name:  Truncate(video.Title, 256),
 			Value: fmt.Sprintf("[Watch Video](%s)", video.URL),
 		}
 	}
@@ -46,8 +47,8 @@ func CreateSongEmbed(songs []models.SearchResult, query string, currentPage, tot
 	fields := make([]*discordgo.MessageEmbedField, len(songs))
 	for i, song := range songs {
 		fields[i] = &discordgo.MessageEmbedField{
-			Name:  truncate(song.VideoTitle, 256),
-			Value: fmt.Sprintf("[%s - %s](%s)", song.Timestamp, truncate(song.Label(), 900), song.URL),
+			Name:  Truncate(song.VideoTitle, 256),
+			Value: fmt.Sprintf("[%s - %s](%s)", song.Timestamp, Truncate(song.Label(), 900), song.URL),
 		}
 	}
 	return pagedEmbed(fmt.Sprintf("Search results for %q", query), fields, currentPage, totalPages)

@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/alwinihza/discord-bot/database"
@@ -27,7 +28,19 @@ func NewBot(token string, db *database.DB, pm *state.PaginationManager) (*Bot, e
 
 func (b *Bot) Start() error {
 	b.registerHandlers()
-	return b.session.Open()
+	if err := b.session.Open(); err != nil {
+		return err
+	}
+	// session.State fills in asynchronously on Ready, so ask the API for our ID.
+	me, err := b.session.User("@me")
+	if err == nil {
+		_, err = b.session.ApplicationCommandBulkOverwrite(me.ID, "", commands.Definitions)
+	}
+	if err != nil {
+		b.session.Close()
+		return fmt.Errorf("register slash commands: %w", err)
+	}
+	return nil
 }
 
 func (b *Bot) Stop() error {
@@ -47,6 +60,8 @@ func (b *Bot) registerHandlers() {
 			if h, ok := handlers[i.ApplicationCommandData().Name]; ok {
 				h(s, i)
 			}
+		case discordgo.InteractionApplicationCommandAutocomplete:
+			commandHandler.Autocomplete(s, i)
 		case discordgo.InteractionMessageComponent:
 			commandHandler.HandleInteraction(s, i)
 		}
