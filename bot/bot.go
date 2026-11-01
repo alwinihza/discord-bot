@@ -64,6 +64,8 @@ func (b *Bot) registerHandlers() {
 			commandHandler.Autocomplete(s, i)
 		case discordgo.InteractionMessageComponent:
 			commandHandler.HandleInteraction(s, i)
+		case discordgo.InteractionModalSubmit:
+			commandHandler.HandleModal(s, i)
 		}
 	})
 }

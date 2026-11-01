@@ -1,6 +1,6 @@
 # Karaoke Discord bot
 
-Slash commands `/list-video`, `/search`, `/random` and `/stats` over the karaoke
+Slash commands `/list-video`, `/search`, `/random`, `/stats` and `/setlist` over the karaoke
 streams and the songs sung in them. Data lives in a SQLite file the bot creates
 and seeds from `database/seed.sql` on first start, then upgrades with
 `database/migrations/NNN_*.sql`, each applied once in order.
@@ -28,7 +28,27 @@ container and volume.
 
 ## Add a stream and its songs
 
-Open a SQL shell inside the running container:
+In Discord, run `/setlist video:<YouTube link>`. It opens a form with the
+stream's current setlist, empty for a new stream. Write one song per line:
+
+```text
+00:13:22 | Halu | Feby Putri
+01:04:48 | Kokoronashi | Chouchou-P | short | Hanatan cover
+```
+
+The fields are time, title, artist, version and note, split by `|` because
+titles contain dashes and parentheses. Only time and title are required.
+Submitting replaces that stream's whole setlist. A new stream gets its title
+and date from YouTube. If any line is wrong, nothing is saved and the bot
+sends the text back as a file to fix. The reply lists songs no other stream
+has, which catches typos in names the bot already knows. The log keeps every
+replaced setlist, so `docker compose logs discord-bot | grep -A60 "saved"`
+recovers one.
+
+Only members with Manage Messages see `/setlist` by default. Change that in
+Server Settings, Integrations.
+
+For bulk edits, open a SQL shell inside the running container:
 
 ```sh
 docker compose exec discord-bot sqlite3 /data/karaoke.db
@@ -40,12 +60,12 @@ VALUES (lower(hex(randomblob(16))), '【Karaoke】Stream title', 'dQw4w9WgXcQ', 
 
 INSERT INTO karaoke_song (id, song_title, artist, version, note, original_title, timestamp, video_id)
 SELECT lower(hex(randomblob(16))), 'Kokoronashi', 'Chouchou-P', 'short', 'Hanatan cover',
-       'GUMI - Kokoronashi (short)', '1:04:48', id
+       'GUMI - Kokoronashi (short)', '01:04:48', id
 FROM karaoke_video WHERE video_url = 'dQw4w9WgXcQ';
 ```
 
 - `video_url` is the 11-character YouTube video ID, not a full URL.
-- `timestamp` is `H:MM:SS` from the start of the stream.
+- `timestamp` is `HH:MM:SS` from the start of the stream.
 - `artist` is the original performer.
 - `version` is short playing-style tags shown next to the title, such as
   `short`, `acapella`, `duet` or `take 2`. Leave it empty for a normal full
