@@ -140,6 +140,15 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 		i.Member.User.Username, len(entries), videoID, setlist.Format(res.Previous))
 
 	msg := fmt.Sprintf("✅ Saved %d songs for **%s** (was %d).", len(entries), res.Title, len(res.Previous))
+	if res.Created && h.announceChannel != "" {
+		_, err := s.ChannelMessageSendEmbed(h.announceChannel, embeds.CreateNewStreamEmbed(video, entries))
+		if err != nil {
+			log.Printf("Error announcing %s: %v", videoID, err)
+			msg += "\n⚠️ Could not post the announcement, check the bot can send messages and embeds there."
+		} else {
+			msg += fmt.Sprintf("\n📣 Announced in <#%s>.", h.announceChannel)
+		}
+	}
 	if len(res.NewSongs) > 0 {
 		msg += "\nFirst time in the bot, check the spelling:\n- " + strings.Join(res.NewSongs, "\n- ")
 	}
