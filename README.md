@@ -39,7 +39,7 @@ stream's current setlist, empty for a new stream. Write one song per line:
 The fields are time, title, artist, version and note, split by `|` because
 titles contain dashes and parentheses. Only time and title are required.
 Submitting replaces that stream's whole setlist. A new stream gets its title
-and date from YouTube. If any line is wrong, nothing is saved and the bot
+and date from the YouTube Data API, using `YOUTUBE_API_KEY` from `.env`. If any line is wrong, nothing is saved and the bot
 sends the text back as a file to fix. The reply lists songs no other stream
 has, which catches typos in names the bot already knows. The log keeps every
 replaced setlist, so `docker compose logs discord-bot | grep -A60 "saved"`

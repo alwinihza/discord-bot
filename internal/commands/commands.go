@@ -9,6 +9,7 @@ import (
 
 	"github.com/alwinihza/discord-bot/database"
 	"github.com/alwinihza/discord-bot/internal/embeds"
+	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/models"
 	"github.com/alwinihza/discord-bot/pkg/state"
 	"github.com/alwinihza/discord-bot/shared"
@@ -26,10 +27,11 @@ type CommandHandler struct {
 	pm *state.PaginationManager
 	// announceChannel gets a post for every new stream; empty disables it.
 	announceChannel string
+	youtube         *youtube.Client
 }
 
-func NewCommandHandler(db *database.DB, pm *state.PaginationManager, announceChannel string) *CommandHandler {
-	return &CommandHandler{db: db, pm: pm, announceChannel: announceChannel}
+func NewCommandHandler(db *database.DB, pm *state.PaginationManager, announceChannel string, yt *youtube.Client) *CommandHandler {
+	return &CommandHandler{db: db, pm: pm, announceChannel: announceChannel, youtube: yt}
 }
 
 func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) {

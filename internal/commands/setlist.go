@@ -20,8 +20,7 @@ const (
 	setlistModalPrefix = "setlist:"
 	maxSetlistText     = 4000 // Discord's text input limit
 	// A modal submit is deferred first, so saving may take longer than 3s.
-	// This leaves room for every YouTube retry.
-	saveTimeout = 90 * time.Second
+	saveTimeout = 15 * time.Second
 )
 
 // Setlist opens a form holding the stream's current setlist for a mod to edit.
@@ -124,13 +123,13 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 	}
 	video := models.VideoInfo{ID: videoID}
 	if !found {
-		video, err = youtube.Fetch(ctx, videoID)
+		video, err = h.youtube.Fetch(ctx, videoID)
 		if err != nil {
 			log.Printf("Error fetching video %s: %v", videoID, err)
-			if errors.Is(err, youtube.ErrBlocked) {
-				fail("YouTube is blocking the bot for now. Try again in a few minutes with the attached text.")
+			if errors.Is(err, youtube.ErrNotFound) {
+				fail("YouTube has no public video with this ID. Check the link.")
 			} else {
-				fail("Could not read this video's title and date from YouTube. Check that it is public, or try again.")
+				fail("Could not read this video's title and date from YouTube, please try again.")
 			}
 			return
 		}

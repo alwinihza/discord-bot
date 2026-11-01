@@ -11,6 +11,7 @@ import (
 
 	"github.com/alwinihza/discord-bot/bot"
 	"github.com/alwinihza/discord-bot/database"
+	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/pkg/state"
 )
 
@@ -25,6 +26,10 @@ func run() error {
 	token, dbPath := os.Getenv("TOKEN"), os.Getenv("DATABASE_PATH")
 	if token == "" || dbPath == "" {
 		return errors.New("TOKEN and DATABASE_PATH must be set")
+	}
+
+	if os.Getenv("YOUTUBE_API_KEY") == "" {
+		log.Println("YOUTUBE_API_KEY is not set, /setlist cannot add new streams")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -50,7 +55,7 @@ func run() error {
 		}
 	}()
 
-	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"))
+	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), youtube.NewClient(os.Getenv("YOUTUBE_API_KEY")))
 	if err != nil {
 		return err
 	}

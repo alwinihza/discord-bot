@@ -6,6 +6,7 @@ import (
 
 	"github.com/alwinihza/discord-bot/database"
 	"github.com/alwinihza/discord-bot/internal/commands"
+	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/pkg/state"
 	"github.com/bwmarrin/discordgo"
 )
@@ -15,16 +16,17 @@ type Bot struct {
 	db              *database.DB
 	pm              *state.PaginationManager
 	announceChannel string
+	youtube         *youtube.Client
 }
 
-func NewBot(token string, db *database.DB, pm *state.PaginationManager, announceChannel string) (*Bot, error) {
+func NewBot(token string, db *database.DB, pm *state.PaginationManager, announceChannel string, yt *youtube.Client) (*Bot, error) {
 	s, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, err
 	}
 	// Slash commands and buttons arrive as interactions, which need no gateway intents.
 	s.Identify.Intents = discordgo.IntentsNone
-	return &Bot{session: s, db: db, pm: pm, announceChannel: announceChannel}, nil
+	return &Bot{session: s, db: db, pm: pm, announceChannel: announceChannel, youtube: yt}, nil
 }
 
 func (b *Bot) Start() error {
@@ -49,7 +51,7 @@ func (b *Bot) Stop() error {
 }
 
 func (b *Bot) registerHandlers() {
-	commandHandler := commands.NewCommandHandler(b.db, b.pm, b.announceChannel)
+	commandHandler := commands.NewCommandHandler(b.db, b.pm, b.announceChannel, b.youtube)
 	handlers := commandHandler.GetCommandHandlers()
 
 	b.session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
