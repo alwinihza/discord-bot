@@ -1,91 +1,67 @@
-// Package youtube reads a video's title and publish date from its watch
-// page, which needs no API key.
+// Package youtube reads a video's title and publish date from the YouTube
+// Data API.
 package youtube
 
 import (
-	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
-	"io"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/alwinihza/discord-bot/models"
 )
 
-// ErrBlocked means YouTube answered with its bot check instead of the video.
-// It comes and goes, so it is worth retrying.
-var ErrBlocked = errors.New("youtube bot check")
+const apiURL = "https://www.googleapis.com/youtube/v3/videos"
 
-var errNoVideo = errors.New("no public title or date")
+// ErrNotFound means the video is deleted, private or never existed.
+var ErrNotFound = errors.New("video not found")
 
-var (
-	watchURL    = "https://www.youtube.com/watch?v="
-	retryDelays = []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second}
-
-	titlePattern = regexp.MustCompile(`<meta name="title" content="([^"]*)"`)
-	datePattern  = regexp.MustCompile(`"publishDate":"([^"]+)"`)
-)
-
-// Fetch retries everything except a video that plainly has no public page.
-func Fetch(ctx context.Context, id string) (models.VideoInfo, error) {
-	info, err := fetchOnce(ctx, id)
-	for _, delay := range retryDelays {
-		if err == nil || errors.Is(err, errNoVideo) {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return info, err
-		case <-time.After(delay):
-		}
-		info, err = fetchOnce(ctx, id)
-	}
-	return info, err
+type Client struct {
+	key string
+	url string
 }
 
-func fetchOnce(ctx context.Context, id string) (models.VideoInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, watchURL+id, nil)
+func NewClient(key string) *Client {
+	return &Client{key: key, url: apiURL}
+}
+
+func (c *Client) Fetch(ctx context.Context, id string) (models.VideoInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"?part=snippet&id="+id, nil)
 	if err != nil {
 		return models.VideoInfo{}, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0")
-	req.Header.Set("Accept-Language", "en")
+	// In a header, not the URL, because Go's HTTP errors quote the URL into logs.
+	req.Header.Set("X-Goog-Api-Key", c.key)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return models.VideoInfo{}, fmt.Errorf("fetch watch page: %w", err)
+		return models.VideoInfo{}, fmt.Errorf("call YouTube API: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return models.VideoInfo{}, fmt.Errorf("fetch watch page: %s", resp.Status)
+		return models.VideoInfo{}, fmt.Errorf("call YouTube API: %s", resp.Status)
 	}
-	page, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		return models.VideoInfo{}, fmt.Errorf("read watch page: %w", err)
-	}
-	return parseWatchPage(id, page)
-}
 
-func parseWatchPage(id string, page []byte) (models.VideoInfo, error) {
-	if bytes.Contains(page, []byte("confirm you’re not a bot")) {
-		return models.VideoInfo{}, ErrBlocked
+	var body struct {
+		Items []struct {
+			Snippet struct {
+				Title       string    `json:"title"`
+				PublishedAt time.Time `json:"publishedAt"`
+			} `json:"snippet"`
+		} `json:"items"`
 	}
-	title := titlePattern.FindSubmatch(page)
-	date := datePattern.FindSubmatch(page)
-	if title == nil || len(title[1]) == 0 || date == nil {
-		return models.VideoInfo{}, fmt.Errorf("video %s: %w", id, errNoVideo)
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return models.VideoInfo{}, fmt.Errorf("read YouTube API response: %w", err)
 	}
-	published, err := time.Parse(time.RFC3339, string(date[1]))
-	if err != nil {
-		return models.VideoInfo{}, fmt.Errorf("parse publish date: %w", err)
+	if len(body.Items) == 0 {
+		return models.VideoInfo{}, fmt.Errorf("video %s: %w", id, ErrNotFound)
 	}
+	snippet := body.Items[0].Snippet
 	return models.VideoInfo{
 		ID:          id,
-		Title:       html.UnescapeString(string(title[1])),
-		PublishedAt: published.UTC().Format("2006-01-02 15:04:05") + "+00",
+		Title:       snippet.Title,
+		PublishedAt: snippet.PublishedAt.UTC().Format("2006-01-02 15:04:05") + "+00",
 		Thumbnail:   "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg",
 	}, nil
 }
