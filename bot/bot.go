@@ -11,19 +11,20 @@ import (
 )
 
 type Bot struct {
-	session *discordgo.Session
-	db      *database.DB
-	pm      *state.PaginationManager
+	session         *discordgo.Session
+	db              *database.DB
+	pm              *state.PaginationManager
+	announceChannel string
 }
 
-func NewBot(token string, db *database.DB, pm *state.PaginationManager) (*Bot, error) {
+func NewBot(token string, db *database.DB, pm *state.PaginationManager, announceChannel string) (*Bot, error) {
 	s, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, err
 	}
 	// Slash commands and buttons arrive as interactions, which need no gateway intents.
 	s.Identify.Intents = discordgo.IntentsNone
-	return &Bot{session: s, db: db, pm: pm}, nil
+	return &Bot{session: s, db: db, pm: pm, announceChannel: announceChannel}, nil
 }
 
 func (b *Bot) Start() error {
@@ -48,7 +49,7 @@ func (b *Bot) Stop() error {
 }
 
 func (b *Bot) registerHandlers() {
-	commandHandler := commands.NewCommandHandler(b.db, b.pm)
+	commandHandler := commands.NewCommandHandler(b.db, b.pm, b.announceChannel)
 	handlers := commandHandler.GetCommandHandlers()
 
 	b.session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {

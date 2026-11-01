@@ -75,7 +75,7 @@ func TestSaveSetlistAddsAndReplaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Title != "nyanyinyaa" || len(res.Previous) != 0 {
+	if res.Title != "nyanyinyaa" || !res.Created || len(res.Previous) != 0 {
 		t.Errorf("first save = %+v", res)
 	}
 	if !reflect.DeepEqual(res.NewSongs, []string{"Totally Made Up - Nobody"}) {
@@ -87,7 +87,7 @@ func TestSaveSetlistAddsAndReplaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Title != "nyanyinyaa" || len(res.Previous) != 2 {
+	if res.Title != "nyanyinyaa" || res.Created || len(res.Previous) != 2 {
 		t.Errorf("second save = %+v", res)
 	}
 	_, entries, _, _ := db.Setlist(ctx, "KANYG45JUlo")

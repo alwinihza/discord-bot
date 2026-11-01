@@ -50,7 +50,7 @@ func run() error {
 		}
 	}()
 
-	discordBot, err := bot.NewBot(token, db, pm)
+	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"))
 	if err != nil {
 		return err
 	}

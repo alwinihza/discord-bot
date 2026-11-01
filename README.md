@@ -45,6 +45,11 @@ has, which catches typos in names the bot already knows. The log keeps every
 replaced setlist, so `docker compose logs discord-bot | grep -A60 "saved"`
 recovers one.
 
+When `/setlist` adds a stream the bot did not have, it posts the stream and
+its songs to the channel in `ANNOUNCE_CHANNEL_ID` (in `.env`; leave it empty
+to post nothing). Edits to a known stream post nothing. The bot needs View
+Channel, Send Messages and Embed Links there.
+
 Only members with Manage Messages see `/setlist` by default. Change that in
 Server Settings, Integrations.
 

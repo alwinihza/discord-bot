@@ -6,6 +6,7 @@ services:
     environment:
       TOKEN: ${TOKEN:?set TOKEN in .env}
       DATABASE_PATH: /data/karaoke.db
+      ANNOUNCE_CHANNEL_ID: ${ANNOUNCE_CHANNEL_ID:-}
     volumes:
       - botdata:/data
     restart: always

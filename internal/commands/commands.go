@@ -24,10 +24,12 @@ const (
 type CommandHandler struct {
 	db *database.DB
 	pm *state.PaginationManager
+	// announceChannel gets a post for every new stream; empty disables it.
+	announceChannel string
 }
 
-func NewCommandHandler(db *database.DB, pm *state.PaginationManager) *CommandHandler {
-	return &CommandHandler{db: db, pm: pm}
+func NewCommandHandler(db *database.DB, pm *state.PaginationManager, announceChannel string) *CommandHandler {
+	return &CommandHandler{db: db, pm: pm, announceChannel: announceChannel}
 }
 
 func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) {

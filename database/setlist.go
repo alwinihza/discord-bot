@@ -78,6 +78,7 @@ func songSlot(e setlist.Entry) string {
 
 type SaveResult struct {
 	Title    string
+	Created  bool // the video was not in the database before
 	Previous []setlist.Entry
 	// NewSongs are title/artist pairs no other stream has, often typos.
 	NewSongs []string
@@ -94,12 +95,15 @@ func (db *DB) SaveSetlist(ctx context.Context, video models.VideoInfo, entries [
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `
+	added, err := tx.ExecContext(ctx, `
 		INSERT INTO karaoke_video (id, video_title, video_url, published_at, thumbnail)
 		SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM karaoke_video WHERE video_url = ?3)`,
 		newID(), video.Title, video.ID, video.PublishedAt, video.Thumbnail)
 	if err != nil {
 		return res, fmt.Errorf("add video: %w", err)
+	}
+	if n, err := added.RowsAffected(); err == nil {
+		res.Created = n == 1
 	}
 	var rowID string
 	err = tx.QueryRowContext(ctx, "SELECT id, video_title FROM karaoke_video WHERE video_url = ?", video.ID).Scan(&rowID, &res.Title)
