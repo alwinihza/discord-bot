@@ -17,8 +17,8 @@ func TestSongStatsForMostSungSong(t *testing.T) {
 	if st.Title != "Tabako" || st.Artist != "Koresawa" {
 		t.Fatalf("resolved to %q by %q", st.Title, st.Artist)
 	}
-	if len(st.Performances) != 9 || st.Rank != 1 || st.TotalSongs != 457 {
-		t.Fatalf("got %d performances, rank %d of %d; want 9, 1 of 457", len(st.Performances), st.Rank, st.TotalSongs)
+	if len(st.Performances) != 10 || st.Rank != 1 || st.TotalSongs != 473 {
+		t.Fatalf("got %d performances, rank %d of %d; want 10, 1 of 473", len(st.Performances), st.Rank, st.TotalSongs)
 	}
 	if !sort.SliceIsSorted(st.Performances, func(i, j int) bool { return st.Performances[i].Date < st.Performances[j].Date }) {
 		t.Fatal("performances are not oldest first")
@@ -30,8 +30,8 @@ func TestSongStatsForMostSungSong(t *testing.T) {
 	for _, n := range st.Versions {
 		sum += n
 	}
-	if sum != 9 {
-		t.Fatalf("versions add up to %d, want 9", sum)
+	if sum != 10 {
+		t.Fatalf("versions add up to %d, want 10", sum)
 	}
 }
 
@@ -82,12 +82,38 @@ func TestSongChoicesForEmptyInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(choices) != 25 || choices[0].Title != "Tabako" {
+	if len(choices) != 25 || choices[0].TimesSung != 10 {
 		t.Fatalf("got %d choices starting with %+v", len(choices), choices[0])
 	}
 	for _, c := range choices {
 		if utf8.RuneCountInString(c.ID) > 100 {
 			t.Fatalf("choice value %q exceeds Discord's 100-char limit", c.ID)
 		}
+	}
+}
+
+func TestCoversAndOriginalsAreListedAndCounted(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	kinds := map[string]int{}
+	for page := int64(1); page <= 7; page++ {
+		videos, _, err := db.FetchVideos(ctx, page, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range videos {
+			kinds[v.Kind]++
+		}
+	}
+	if kinds["karaoke"] != 40 || kinds["cover"] != 20 || kinds["original"] != 3 {
+		t.Fatalf("video kinds %v", kinds)
+	}
+
+	st, err := db.SongStats(ctx, "fated rendezvous")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.OtherMatches) != 0 {
+		t.Fatalf("Fated Rendezvous is still split across names: %+v", st.OtherMatches)
 	}
 }

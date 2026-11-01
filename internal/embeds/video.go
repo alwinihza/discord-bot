@@ -32,11 +32,13 @@ func pagedEmbed(title string, fields []*discordgo.MessageEmbedField, currentPage
 	}
 }
 
+var kindBadge = map[string]string{"cover": "🎵 Cover · ", "original": "✨ Original · "}
+
 func CreateVideoEmbed(videos []models.VideoSong, currentPage, totalPages int64) *discordgo.MessageEmbed {
 	fields := make([]*discordgo.MessageEmbedField, len(videos))
 	for i, video := range videos {
 		fields[i] = &discordgo.MessageEmbedField{
-			Name:  Truncate(video.Title, 256),
+			Name:  Truncate(kindBadge[video.Kind]+video.Title, 256),
 			Value: fmt.Sprintf("[Watch Video](%s)", video.URL),
 		}
 	}

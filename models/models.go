@@ -5,6 +5,7 @@ import "time"
 type VideoSong struct {
 	Title string
 	URL   string
+	Kind  string // "karaoke", "cover" or "original"
 }
 
 type SearchResult struct {
