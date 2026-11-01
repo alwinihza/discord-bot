@@ -67,6 +67,10 @@ func TestVideoID(t *testing.T) {
 		"https://m.youtube.com/watch?app=1&v=a-b_c1234XY": "a-b_c1234XY",
 		"https://www.youtube.com/live/KANYG45JUlo?si=x":   "KANYG45JUlo",
 		"https://youtube.com/shorts/KANYG45JUlo":          "KANYG45JUlo",
+		"video:KANYG45JUlo":                               "KANYG45JUlo",
+		"/setlist video:KANYG45JUlo":                      "KANYG45JUlo",
+		"`KANYG45JUlo`":                                   "KANYG45JUlo",
+		"<https://youtu.be/KANYG45JUlo>":                  "KANYG45JUlo",
 	} {
 		if got, ok := VideoID(in); !ok || got != want {
 			t.Errorf("VideoID(%q) = %q, %v", in, got, ok)

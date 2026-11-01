@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -19,7 +20,8 @@ const (
 	setlistModalPrefix = "setlist:"
 	maxSetlistText     = 4000 // Discord's text input limit
 	// A modal submit is deferred first, so saving may take longer than 3s.
-	saveTimeout = 15 * time.Second
+	// This leaves room for every YouTube retry.
+	saveTimeout = 90 * time.Second
 )
 
 // Setlist opens a form holding the stream's current setlist for a mod to edit.
@@ -32,7 +34,7 @@ func (h *CommandHandler) Setlist(s *discordgo.Session, i *discordgo.InteractionC
 	}
 	videoID, ok := setlist.VideoID(raw)
 	if !ok {
-		shared.RespondWithError(s, i, "That is not a YouTube link or video ID")
+		shared.RespondWithError(s, i, fmt.Sprintf("%q is not a YouTube link or video ID", embeds.Truncate(raw, 100)))
 		return
 	}
 
@@ -125,7 +127,11 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 		video, err = youtube.Fetch(ctx, videoID)
 		if err != nil {
 			log.Printf("Error fetching video %s: %v", videoID, err)
-			fail("Could not read this video's title and date from YouTube.")
+			if errors.Is(err, youtube.ErrBlocked) {
+				fail("YouTube is blocking the bot for now. Try again in a few minutes with the attached text.")
+			} else {
+				fail("Could not read this video's title and date from YouTube. Check that it is public, or try again.")
+			}
 			return
 		}
 	}

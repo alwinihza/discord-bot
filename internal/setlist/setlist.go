@@ -105,9 +105,13 @@ func Format(entries []Entry) string {
 
 var videoIDPattern = regexp.MustCompile(`(?:^|v=|youtu\.be/|/live/|/shorts/|/embed/)([A-Za-z0-9_-]{11})(?:$|[?&#/])`)
 
-// VideoID extracts the 11-character ID from a YouTube URL or a bare ID.
+// VideoID extracts the 11-character ID from a YouTube URL or a bare ID. It
+// tolerates what pasting adds: Discord's <link> and `code` marks, and the
+// command text itself.
 func VideoID(s string) (string, bool) {
-	m := videoIDPattern.FindStringSubmatch(strings.TrimSpace(s))
+	s = strings.TrimPrefix(strings.TrimSpace(s), "/setlist ")
+	s = strings.TrimPrefix(strings.TrimSpace(s), "video:")
+	m := videoIDPattern.FindStringSubmatch(strings.Trim(s, " \t\r\n`<>\"'"))
 	if m == nil {
 		return "", false
 	}
