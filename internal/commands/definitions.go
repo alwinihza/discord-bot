@@ -2,7 +2,11 @@ package commands
 
 import "github.com/bwmarrin/discordgo"
 
-var guildOnly = &[]discordgo.InteractionContextType{discordgo.InteractionContextGuild}
+var (
+	guildOnly = &[]discordgo.InteractionContextType{discordgo.InteractionContextGuild}
+	// Server admins can change who may use /setlist under Integrations.
+	modsOnly = int64(discordgo.PermissionManageMessages)
+)
 
 // Definitions is the full slash-command set the bot registers on startup.
 // Discord replaces whatever was registered before with exactly this list.
@@ -20,6 +24,14 @@ var Definitions = []*discordgo.ApplicationCommand{
 		Options: []*discordgo.ApplicationCommandOption{{
 			Type: discordgo.ApplicationCommandOptionString, Name: "song", Description: "Song title or artist",
 			Required: true, Autocomplete: true,
+		}},
+	},
+	{
+		Name: "setlist", Description: "Add or edit a stream's setlist (mods)", Contexts: guildOnly,
+		DefaultMemberPermissions: &modsOnly,
+		Options: []*discordgo.ApplicationCommandOption{{
+			Type: discordgo.ApplicationCommandOptionString, Name: "video", Description: "YouTube link or video ID",
+			Required: true,
 		}},
 	},
 }

@@ -77,3 +77,11 @@ type SongStats struct {
 	Performances []Performance // oldest first
 	OtherMatches []SongChoice
 }
+
+// VideoInfo describes a YouTube video before it is stored.
+type VideoInfo struct {
+	ID          string // the 11-character YouTube ID, stored as video_url
+	Title       string
+	PublishedAt string // "2006-01-02 15:04:05+00", UTC
+	Thumbnail   string
+}
