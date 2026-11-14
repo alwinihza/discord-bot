@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/alwinihza/discord-bot/models"
 	"github.com/alwinihza/discord-bot/shared"
@@ -62,6 +63,32 @@ func (db *DB) ResolveSong(ctx context.Context, query string) (models.SongChoice,
 		return c, ErrSongNotFound
 	}
 	return choices[0], nil
+}
+
+// SongsByID returns the songs with the given IDs, keyed by ID. IDs that match no song are left out.
+func (db *DB) SongsByID(ctx context.Context, ids []string) (map[string]models.SongChoice, error) {
+	found := map[string]models.SongChoice{}
+	if len(ids) == 0 {
+		return found, nil
+	}
+	args := make([]any, len(ids))
+	for n, id := range ids {
+		args[n] = id
+	}
+	rows, err := db.db.QueryContext(ctx,
+		"SELECT id, song_title, coalesce(artist, '') FROM karaoke_song WHERE id IN (?"+strings.Repeat(",?", len(ids)-1)+")", args...)
+	if err != nil {
+		return nil, fmt.Errorf("look up songs by id: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c models.SongChoice
+		if err := rows.Scan(&c.ID, &c.Title, &c.Artist); err != nil {
+			return nil, fmt.Errorf("read song: %w", err)
+		}
+		found[c.ID] = c
+	}
+	return found, rows.Err()
 }
 
 // SongStats resolves query as a song ID (from autocomplete) or, failing

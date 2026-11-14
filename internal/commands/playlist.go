@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/alwinihza/discord-bot/internal/embeds"
 	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/bwmarrin/discordgo"
 )
@@ -160,12 +161,33 @@ func escapeMarkdown(s string) string {
 	return b.String()
 }
 
+const (
+	maxNameRunes      = 80
+	maxMarksPerLetter = 2
+)
+
+func displayName(s string) string {
+	var b strings.Builder
+	marks := 0
+	for _, r := range s {
+		if unicode.IsMark(r) {
+			if marks++; marks > maxMarksPerLetter {
+				continue
+			}
+		} else {
+			marks = 0
+		}
+		b.WriteRune(r)
+	}
+	return escapeMarkdown(embeds.Truncate(b.String(), maxNameRunes))
+}
+
 func describePlaylist(p site.Summary) string {
 	state := ""
 	if p.Deleted {
 		state = " (deleted)"
 	}
-	return fmt.Sprintf("**%s**%s\n%d songs, created %s, updated %s", escapeMarkdown(p.Name), state, p.EntryCount, p.CreatedAt, p.UpdatedAt)
+	return fmt.Sprintf("**%s**%s\n%d songs, created %s, updated %s", displayName(p.Name), state, p.EntryCount, p.CreatedAt, p.UpdatedAt)
 }
 
 func (h *CommandHandler) siteError(err error) string {
@@ -178,6 +200,8 @@ func (h *CommandHandler) siteError(err error) string {
 		return escapeMarkdown(rule.Message)
 	case errors.Is(err, site.ErrInvalidID):
 		return "That is not a playlist link or id"
+	case errors.Is(err, site.ErrSongNotInPlaylist):
+		return "That song is not in this playlist, pick one from the list"
 	case errors.Is(err, site.ErrNotFound):
 		return "No playlist with that id"
 	case errors.Is(err, site.ErrNotOwner):

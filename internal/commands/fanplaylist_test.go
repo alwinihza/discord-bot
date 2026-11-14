@@ -271,7 +271,7 @@ func TestShareIsTheOnlyPublicReplyAndHoldsNoEditToken(t *testing.T) {
 	h := fanHandler(o.client(t))
 	h.Playlist(s, fan(userA, "share", "playlist", "https://fio.example/p/Rainy123#edit=SECRETTOKEN"))
 	calls := fd.snapshot()
-	if len(calls) != 3 {
+	if len(calls) != 4 {
 		t.Fatalf("calls = %+v", calls)
 	}
 	public := calls[2]
@@ -285,7 +285,7 @@ func TestShareIsTheOnlyPublicReplyAndHoldsNoEditToken(t *testing.T) {
 	if !strings.Contains(text, "https://fio.example/p/Rainy123") || strings.Contains(text, "SECRETTOKEN") || strings.Contains(text, "edit") {
 		t.Errorf("public message = %q", text)
 	}
-	for _, c := range calls[:2] {
+	for _, c := range []discordCall{calls[0], calls[1], calls[3]} {
 		if strings.Contains(contentOf(c), "https://") {
 			t.Errorf("private reply carries the link: %q", contentOf(c))
 		}
@@ -369,6 +369,7 @@ func TestPlaylistAutocompleteListsOnlyTheCallersPlaylists(t *testing.T) {
 func TestRemoveSongAutocompleteOffersOnlySongsInThePlaylist(t *testing.T) {
 	o := okSite("Rainy", "Halu", "Runtuh")
 	h := fanHandler(o.client(t))
+	h.db = seededDB(t)
 	s, fd := newSession(t)
 	h.Autocomplete(s, focus(fan(userA, "remove", "playlist", "Rainy123", "song", "run"), "song"))
 	names, values := choiceNames(fd)
@@ -476,7 +477,135 @@ func TestMineStaysUnderDiscordsLimitForManyPlaylists(t *testing.T) {
 	o := &ownerSite{reply: func(string) (int, string) { return 200, `{"playlists":[` + strings.Join(items, ",") + `]}` }}
 	s, fd := newSession(t)
 	fanHandler(o.client(t)).Playlist(s, fan(userA, "mine"))
-	if got := lastContent(t, fd); len([]rune(got)) > 2000 || !strings.Contains(got, "50 more") {
-		t.Errorf("reply has %d chars: %.80q", len([]rune(got)), got)
+	got := lastContent(t, fd)
+	shown := strings.Count(got, "/p/Rainy")
+	if len([]rune(got)) > 2000 || shown == 0 || !strings.Contains(got, fmt.Sprintf("%d more", 60-shown)) {
+		t.Errorf("reply shows %d of 60 and has %d chars: %.80q", shown, len([]rune(got)), got)
+	}
+}
+
+var stackedName = strings.Repeat("a"+strings.Repeat("\u0301", 40), 60)
+
+func anyRejected(fd *fakeDiscord) bool {
+	for _, c := range fd.snapshot() {
+		if c.Status != 200 {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSixtyGraphemeNameWithStackedMarksFitsDiscordInEveryReply(t *testing.T) {
+	for _, sub := range []string{"mine", "create", "add", "remove", "rename", "delete", "share"} {
+		o := okSite(stackedName, "Halu")
+		s, fd := newSession(t)
+		h := fanHandler(o.client(t))
+		h.db = seededDB(t)
+		h.Playlist(s, fan(userA, sub, "playlist", "Rainy123", "name", "New", "song", "song-1"))
+		if sub == "delete" {
+			h.handleFanPlaylistButton(s, clickBy(userA, fanConfirmPrefix+"Rainy123"), fanConfirmPrefix+"Rainy123")
+		}
+		if anyRejected(fd) {
+			t.Errorf("%s: Discord rejected a message: %+v", sub, fd.snapshot())
+		}
+	}
+}
+
+func TestMineSummarisesLongNamesInsteadOfCuttingThem(t *testing.T) {
+	var items []string
+	for n := range 9 {
+		items = append(items, fmt.Sprintf(`{"id":"Rainy%03d","name":%q,"entryCount":2}`, n, stackedName))
+	}
+	o := &ownerSite{reply: func(string) (int, string) { return 200, `{"playlists":[` + strings.Join(items, ",") + `]}` }}
+	s, fd := newSession(t)
+	fanHandler(o.client(t)).Playlist(s, fan(userA, "mine"))
+	got := lastContent(t, fd)
+	shown := strings.Count(got, "/p/Rainy")
+	if anyRejected(fd) || shown == 0 || (shown < 9 && !strings.Contains(got, fmt.Sprintf("%d more", 9-shown))) {
+		t.Errorf("shows %d of 9, %d chars, tail %q", shown, len([]rune(got)), got[max(0, len(got)-40):])
+	}
+}
+
+func TestShareOnlyClaimsSharedWhenTheChannelPostWorked(t *testing.T) {
+	o := okSite("Rainy", "Halu")
+	s, fd := newSession(t)
+	fd.failFollowup = true
+	fanHandler(o.client(t)).Playlist(s, fan(userA, "share", "playlist", "Rainy123"))
+	calls := fd.snapshot()
+	last := calls[len(calls)-1]
+	if got := contentOf(last); strings.Contains(got, "Shared in this channel") || !strings.HasPrefix(got, "❌") {
+		t.Errorf("final reply after a failed post = %q", got)
+	}
+	if last.Method != http.MethodPatch {
+		t.Errorf("final call = %s, want the private reply edited", last.Method)
+	}
+}
+
+func TestRemoveByArtistTextFindsTheEntryTheSiteTitlesWithoutAnArtist(t *testing.T) {
+	db := seededDB(t)
+	song, err := db.ResolveSong(context.Background(), "celengan rindu")
+	if err != nil || song.Artist == "" {
+		t.Fatalf("seed song: %+v, %v", song, err)
+	}
+	other, err := db.ResolveSong(context.Background(), "kokoronashi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"id":"Rainy123","name":"Rainy","entries":[{"songId":%q,"title":%q},{"songId":%q,"title":%q}],"version":1}`,
+		song.ID, song.Title, other.ID, other.Title)
+	o := &ownerSite{reply: func(string) (int, string) { return 200, body }}
+	h := fanHandler(o.client(t))
+	h.db = db
+
+	s, fd := newSession(t)
+	h.Playlist(s, fan(userA, "remove", "playlist", "Rainy123", "song", strings.ToLower(song.Artist)))
+	var deleted []string
+	for _, c := range o.seen() {
+		if c.Method == http.MethodDelete {
+			deleted = append(deleted, c.Path)
+		}
+	}
+	if want := "/admin/owner/playlists/Rainy123/songs/" + song.ID; len(deleted) != 1 || deleted[0] != want {
+		t.Errorf("deletes = %v, want [%s]; reply %q", deleted, want, lastContent(t, fd))
+	}
+
+	s, fd = newSession(t)
+	h.Autocomplete(s, focus(fan(userA, "remove", "playlist", "Rainy123", "song", ""), "song"))
+	names, _ := choiceNames(fd)
+	if len(names) != 2 || names[0] != song.Label() {
+		t.Errorf("choices = %v, want %q first", names, song.Label())
+	}
+}
+
+func TestRemoveRacingAnotherRemovalSaysTheSongIsGoneNotThePlaylist(t *testing.T) {
+	db := seededDB(t)
+	song, err := db.ResolveSong(context.Background(), "celengan rindu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"id":"Rainy123","name":"Rainy","entries":[{"songId":%q,"title":%q}],"version":1}`, song.ID, song.Title)
+	o := &ownerSite{reply: func(line string) (int, string) {
+		if strings.HasPrefix(line, "DELETE") {
+			return 404, `{"error":"That song is not in the playlist"}`
+		}
+		return 200, body
+	}}
+	h := fanHandler(o.client(t))
+	h.db = db
+	s, fd := newSession(t)
+	h.Playlist(s, fan(userA, "remove", "playlist", "Rainy123", "song", song.ID))
+	got := lastContent(t, fd)
+	if !strings.HasPrefix(got, "❌") || strings.Contains(got, "No playlist") || !strings.Contains(got, "song") {
+		t.Errorf("reply = %q", got)
+	}
+}
+
+func TestUnknownSongReplyShowsBackslashesOnce(t *testing.T) {
+	s, fd := newSession(t)
+	h := fanHandler(okSite("Rainy", "Halu").client(t))
+	h.db = seededDB(t)
+	h.Playlist(s, fan(userA, "add", "playlist", "Rainy123", "song", `zzz\qqq`))
+	if got := lastContent(t, fd); !strings.Contains(got, `No song matches "zzz\\qqq"`) {
+		t.Errorf("reply = %q", got)
 	}
 }

@@ -15,16 +15,17 @@ import (
 )
 
 var (
-	ErrNotFound    = errors.New("playlist not found")
-	ErrForbidden   = errors.New("site rejected the admin secret")
-	ErrInvalidID   = errors.New("invalid playlist id")
-	ErrInvalidUser = errors.New("invalid Discord user id")
-	ErrNotOwner    = errors.New("playlist belongs to someone else")
-	ErrDeleted     = errors.New("playlist was deleted")
-	ErrConflict    = errors.New("playlist changed meanwhile")
-	ErrRateLimited = errors.New("site rate limit reached")
-	ErrDailyCap    = errors.New("site reached its daily playlist cap")
-	ErrNoOwnerAPI  = errors.New("site has no owner routes yet")
+	ErrNotFound          = errors.New("playlist not found")
+	ErrForbidden         = errors.New("site rejected the admin secret")
+	ErrSongNotInPlaylist = errors.New("song is not in the playlist")
+	ErrInvalidID         = errors.New("invalid playlist id")
+	ErrInvalidUser       = errors.New("invalid Discord user id")
+	ErrNotOwner          = errors.New("playlist belongs to someone else")
+	ErrDeleted           = errors.New("playlist was deleted")
+	ErrConflict          = errors.New("playlist changed meanwhile")
+	ErrRateLimited       = errors.New("site rate limit reached")
+	ErrDailyCap          = errors.New("site reached its daily playlist cap")
+	ErrNoOwnerAPI        = errors.New("site has no owner routes yet")
 )
 
 // RuleError carries the site's own message for a request it refused with 400.
@@ -207,6 +208,9 @@ func statusError(resp *http.Response, raw []byte) error {
 	case http.StatusNotFound:
 		if fail.Error == "Not Found" {
 			return ErrNoOwnerAPI
+		}
+		if fail.Error == "That song is not in the playlist" {
+			return ErrSongNotInPlaylist
 		}
 		return ErrNotFound
 	case http.StatusConflict:

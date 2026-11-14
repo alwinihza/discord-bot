@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/alwinihza/discord-bot/database"
 	"github.com/alwinihza/discord-bot/internal/embeds"
@@ -17,7 +18,7 @@ const (
 	fanConfirmPrefix = "playlist:confirm:"
 	fanCancelID      = "playlist:cancel"
 	maxMineLines     = 10
-	maxMessage       = 2000
+	mineBudget       = 1800
 )
 
 type escapedError string
@@ -94,13 +95,17 @@ func (h *CommandHandler) Playlist(s *discordgo.Session, i *discordgo.Interaction
 		editPlaylist(s, i, "❌ "+h.siteError(err), nil)
 		return
 	}
-	editPlaylist(s, i, reply.text, reply.components)
 	if reply.channelFollowup == "" {
+		editPlaylist(s, i, reply.text, reply.components)
 		return
 	}
+	editPlaylist(s, i, "Sharing in this channel…", nil)
 	if _, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{Content: reply.channelFollowup, AllowedMentions: noMentions}); err != nil {
 		log.Printf("Error posting shared playlist: %v", err)
+		editPlaylist(s, i, "❌ Could not post in this channel, please try again", nil)
+		return
 	}
+	editPlaylist(s, i, reply.text, nil)
 }
 
 func deferEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, kind discordgo.InteractionResponseType) bool {
@@ -148,7 +153,7 @@ func ownedID(a playlistArgs) (string, error) {
 func (h *CommandHandler) resolveSong(ctx context.Context, query string) (songID, label string, err error) {
 	choice, err := h.db.ResolveSong(ctx, strings.TrimSpace(query))
 	if errors.Is(err, database.ErrSongNotFound) {
-		return "", "", escapedError(fmt.Sprintf("No song matches %q", escapeMarkdown(embeds.Truncate(query, 100))))
+		return "", "", escapedError(fmt.Sprintf(`No song matches "%s"`, escapeMarkdown(embeds.Truncate(query, 100))))
 	}
 	if err != nil {
 		log.Printf("Error resolving song %q: %v", query, err)
@@ -167,13 +172,15 @@ func (h *CommandHandler) playlistMine(ctx context.Context, user string, _ playli
 	}
 	var b strings.Builder
 	for n, p := range list {
-		if n == maxMineLines {
-			fmt.Fprintf(&b, "…and %d more", len(list)-n)
+		line := fmt.Sprintf("**%s**, %s\n<%s>\n", displayName(p.Name), songCount(p.EntryCount), h.site.ViewLink(p.ID))
+		more := fmt.Sprintf("…and %d more", len(list)-n)
+		if n == maxMineLines || utf8.RuneCountInString(b.String()+line+more) > mineBudget {
+			b.WriteString(more)
 			break
 		}
-		fmt.Fprintf(&b, "**%s**, %s\n<%s>\n", escapeMarkdown(p.Name), songCount(p.EntryCount), h.site.ViewLink(p.ID))
+		b.WriteString(line)
 	}
-	return playlistReply{text: embeds.Truncate(strings.TrimSpace(b.String()), maxMessage)}, nil
+	return playlistReply{text: strings.TrimSpace(b.String())}, nil
 }
 
 func (h *CommandHandler) playlistCreate(ctx context.Context, user string, a playlistArgs) (playlistReply, error) {
@@ -185,7 +192,7 @@ func (h *CommandHandler) playlistCreate(ctx context.Context, user string, a play
 	if err != nil {
 		return playlistReply{}, err
 	}
-	return playlistReply{text: fmt.Sprintf("Created **%s** with %s.\n%s", escapeMarkdown(p.Name), escapeMarkdown(label), h.site.ViewLink(p.ID))}, nil
+	return playlistReply{text: fmt.Sprintf("Created **%s** with %s.\n%s", displayName(p.Name), escapeMarkdown(label), h.site.ViewLink(p.ID))}, nil
 }
 
 func (h *CommandHandler) playlistAdd(ctx context.Context, user string, a playlistArgs) (playlistReply, error) {
@@ -201,7 +208,7 @@ func (h *CommandHandler) playlistAdd(ctx context.Context, user string, a playlis
 	if err != nil {
 		return playlistReply{}, err
 	}
-	return playlistReply{text: fmt.Sprintf("Added %s to **%s**, now %s.\n%s", escapeMarkdown(label), escapeMarkdown(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID))}, nil
+	return playlistReply{text: fmt.Sprintf("Added %s to **%s**, now %s.\n%s", escapeMarkdown(label), displayName(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID))}, nil
 }
 
 func (h *CommandHandler) playlistRemove(ctx context.Context, user string, a playlistArgs) (playlistReply, error) {
@@ -213,7 +220,12 @@ func (h *CommandHandler) playlistRemove(ctx context.Context, user string, a play
 	if err != nil {
 		return playlistReply{}, err
 	}
-	entry, ok := findEntry(current.Entries, a.song)
+	labels, err := h.entryLabels(ctx, current.Entries)
+	if err != nil {
+		log.Printf("Error labelling playlist entries: %v", err)
+		return playlistReply{}, escapedError("Failed to look up the song, please try again")
+	}
+	entry, ok := findEntry(current.Entries, labels, a.song)
 	if !ok {
 		return playlistReply{}, escapedError("That song is not in this playlist, pick one from the list")
 	}
@@ -221,17 +233,36 @@ func (h *CommandHandler) playlistRemove(ctx context.Context, user string, a play
 	if err != nil {
 		return playlistReply{}, err
 	}
-	return playlistReply{text: fmt.Sprintf("Removed %s from **%s**, now %s.\n%s", escapeMarkdown(entry.Title), escapeMarkdown(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID))}, nil
+	return playlistReply{text: fmt.Sprintf("Removed %s from **%s**, now %s.\n%s", escapeMarkdown(labels[entry.SongID]), displayName(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID))}, nil
 }
 
-func findEntry(entries []site.Entry, query string) (site.Entry, bool) {
+func (h *CommandHandler) entryLabels(ctx context.Context, entries []site.Entry) (map[string]string, error) {
+	ids := make([]string, len(entries))
+	for n, e := range entries {
+		ids[n] = e.SongID
+	}
+	songs, err := h.db.SongsByID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	labels := make(map[string]string, len(entries))
+	for _, e := range entries {
+		labels[e.SongID] = e.Title
+		if song, ok := songs[e.SongID]; ok {
+			labels[e.SongID] = song.Label()
+		}
+	}
+	return labels, nil
+}
+
+func findEntry(entries []site.Entry, labels map[string]string, query string) (site.Entry, bool) {
 	query = strings.TrimSpace(query)
 	var match []site.Entry
 	for _, e := range entries {
 		if e.SongID == query {
 			return e, true
 		}
-		if query != "" && strings.Contains(strings.ToLower(e.Title), strings.ToLower(query)) {
+		if query != "" && strings.Contains(strings.ToLower(labels[e.SongID]), strings.ToLower(query)) {
 			match = append(match, e)
 		}
 	}
@@ -250,7 +281,7 @@ func (h *CommandHandler) playlistRename(ctx context.Context, user string, a play
 	if err != nil {
 		return playlistReply{}, err
 	}
-	return playlistReply{text: fmt.Sprintf("Renamed to **%s**.\n%s", escapeMarkdown(p.Name), h.site.ViewLink(p.ID))}, nil
+	return playlistReply{text: fmt.Sprintf("Renamed to **%s**.\n%s", displayName(p.Name), h.site.ViewLink(p.ID))}, nil
 }
 
 func (h *CommandHandler) playlistDelete(ctx context.Context, user string, a playlistArgs) (playlistReply, error) {
@@ -263,7 +294,7 @@ func (h *CommandHandler) playlistDelete(ctx context.Context, user string, a play
 		return playlistReply{}, err
 	}
 	return playlistReply{
-		text: fmt.Sprintf("Delete **%s**, %s? Its link stops working.", escapeMarkdown(p.Name), songCount(len(p.Entries))),
+		text: fmt.Sprintf("Delete **%s**, %s? Its link stops working.", displayName(p.Name), songCount(len(p.Entries))),
 		components: []discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 			discordgo.Button{Label: "Delete", Style: discordgo.DangerButton, CustomID: fanConfirmPrefix + id},
 			discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: fanCancelID},
@@ -282,7 +313,7 @@ func (h *CommandHandler) playlistShare(ctx context.Context, user string, a playl
 	}
 	return playlistReply{
 		text:            "Shared in this channel.",
-		channelFollowup: fmt.Sprintf("<@%s> shared **%s**, %s.\n%s", user, escapeMarkdown(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID)),
+		channelFollowup: fmt.Sprintf("<@%s> shared **%s**, %s.\n%s", user, displayName(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID)),
 	}, nil
 }
 
@@ -344,9 +375,14 @@ func (h *CommandHandler) playlistChoices(i *discordgo.InteractionCreate) []*disc
 			log.Printf("Error listing playlist choices: %v", err)
 			return nil
 		}
+		labels, err := h.entryLabels(ctx, p.Entries)
+		if err != nil {
+			log.Printf("Error labelling playlist entries: %v", err)
+			return nil
+		}
 		for _, e := range p.Entries {
-			if strings.Contains(strings.ToLower(e.Title), query) {
-				add(e.Title, e.SongID)
+			if strings.Contains(strings.ToLower(labels[e.SongID]), query) {
+				add(labels[e.SongID], e.SongID)
 			}
 		}
 	case focused.Name == "song":

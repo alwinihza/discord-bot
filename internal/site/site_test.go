@@ -220,6 +220,7 @@ func TestOwnerStatusesMapToTypedErrors(t *testing.T) {
 		{403, `{"error":"Forbidden"}`, ErrForbidden},
 		{404, `{"error":"No such playlist"}`, ErrNotFound},
 		{404, `{"error":"Not Found"}`, ErrNoOwnerAPI},
+		{404, `{"error":"That song is not in the playlist"}`, ErrSongNotInPlaylist},
 		{409, `{"error":"The playlist changed. Reload it."}`, ErrConflict},
 		{410, `{"error":"This playlist was deleted"}`, ErrDeleted},
 		{429, `{"error":"Too many playlists from this member. Try later."}`, ErrRateLimited},
