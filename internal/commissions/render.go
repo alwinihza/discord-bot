@@ -198,7 +198,7 @@ func Embed(c site.Commission) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
 		Title:  kindLabel(c.Kind),
 		Color:  color,
-		Footer: &discordgo.MessageEmbedFooter{Text: "ID " + truncate(c.ID, 64)},
+		Footer: &discordgo.MessageEmbedFooter{Text: footerPrefix + c.ID},
 	}
 	if t, err := time.Parse(time.RFC3339, c.CreatedAt); err == nil {
 		embed.Timestamp = t.UTC().Format(time.RFC3339)

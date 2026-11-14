@@ -18,6 +18,7 @@ const (
 	channel = "900000000000000001"
 	manager = "100000000000000001"
 	other   = "100000000000000002"
+	botID   = "800000000000000001"
 )
 
 type discordCall struct {
@@ -32,6 +33,9 @@ type fakeDiscord struct {
 	calls     []discordCall
 	sendFails int
 	nextID    int
+	// history is what GET messages returns, newest first. historyFails makes that read fail.
+	history      []map[string]any
+	historyFails bool
 }
 
 func (f *fakeDiscord) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -46,6 +50,15 @@ func (f *fakeDiscord) RoundTrip(r *http.Request) (*http.Response, error) {
 	status, reply := 200, "{}"
 	isSend := r.Method == http.MethodPost && r.URL.Path == "/api/v9/channels/"+channel+"/messages"
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v9/users/@me":
+		reply = `{"id":"` + botID + `"}`
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v9/channels/"+channel+"/messages":
+		if f.historyFails {
+			status = 500
+		} else {
+			b, _ := json.Marshal(f.history)
+			reply = string(b)
+		}
 	case isSend && f.sendFails > 0:
 		f.sendFails--
 		status = 500
@@ -159,5 +172,13 @@ func commission(id string) site.Commission {
 	return site.Commission{
 		ID: id, Kind: "voice", CreatedAt: "2026-03-01T10:00:00Z", Status: "received",
 		Next: []string{"quoted", "declined"}, Fields: map[string]any{"name": "Rin"},
+	}
+}
+
+// botMessage is a channel message in the shape Discord returns it.
+func botMessage(msgID, author, footer string) map[string]any {
+	return map[string]any{
+		"id": msgID, "channel_id": channel, "author": map[string]any{"id": author},
+		"embeds": []map[string]any{{"footer": map[string]any{"text": footer}}},
 	}
 }

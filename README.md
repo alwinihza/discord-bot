@@ -106,8 +106,11 @@ The buttons under an embed are the statuses the site allows next. Only the Disco
 embed and writes a line in the thread. The site decides which changes are legal and the client
 sees progress on the tracking page.
 
-If the bot restarts between posting a message and telling the site, that inquiry is posted
-again on the next poll and the earlier message is left in the channel. Delete it by hand.
+If the bot restarts between posting a message and telling the site, it reads the last 100
+messages in the channel on startup and adopts its own commission messages (the embed footer
+reads `Commission <id>`), so it tells the site about the existing message instead of posting
+again. If that history read fails, the bot logs it and carries on, and a duplicate is possible
+until the next restart. Messages posted before the footer changed to this format are not adopted.
 
 ## Re-seed from scratch
 

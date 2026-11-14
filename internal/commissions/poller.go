@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/alwinihza/discord-bot/internal/site"
@@ -15,6 +16,8 @@ const (
 	PollInterval         = 30 * time.Second
 	siteTimeout          = 10 * time.Second
 	threadArchiveMinutes = 10080
+	seedHistory          = 100
+	footerPrefix         = "Commission "
 )
 
 var noMentions = &discordgo.MessageAllowedMentions{}
@@ -24,6 +27,8 @@ var noMentions = &discordgo.MessageAllowedMentions{}
 type posting struct {
 	messageID string
 	done      bool
+	// adopted marks a message found in the channel at startup rather than sent this run.
+	adopted bool
 }
 
 type Poller struct {
@@ -40,6 +45,7 @@ func NewPoller(sc *site.Client, s *discordgo.Session, channelID string) *Poller 
 
 // Run polls until ctx ends. It returns once the in-flight tick has finished.
 func (p *Poller) Run(ctx context.Context) {
+	p.seed()
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
@@ -48,6 +54,38 @@ func (p *Poller) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+	}
+}
+
+// seed adopts commission messages this bot already sent, so a restart between the send and
+// /posted retries /posted instead of sending a second message. Discord is the source of truth.
+func (p *Poller) seed() {
+	me, err := p.session.User("@me")
+	if err != nil {
+		log.Printf("Commissions: seed: look up own user: %v", err)
+		return
+	}
+	msgs, err := p.session.ChannelMessages(p.channelID, seedHistory, "", "", "")
+	if err != nil {
+		log.Printf("Commissions: seed: read channel history: %v", err)
+		return
+	}
+	// History is newest first, so the oldest message of a commission wins.
+	for _, m := range msgs {
+		if m.Author == nil || m.Author.ID != me.ID {
+			continue
+		}
+		for _, e := range m.Embeds {
+			if e.Footer == nil {
+				continue
+			}
+			id, ok := strings.CutPrefix(e.Footer.Text, footerPrefix)
+			if !ok || !site.ValidCommissionID(id) {
+				continue
+			}
+			p.sent[id] = &posting{messageID: m.ID, adopted: true}
+			break
 		}
 	}
 }
@@ -107,6 +145,11 @@ func (p *Poller) post(ctx context.Context, c site.Commission) error {
 		sent.done = true
 	case errors.Is(err, site.ErrCommissionConflict):
 		sent.done = true
+		if sent.adopted {
+			// The site holds a different message. This one was not sent this run, so leave it.
+			log.Printf("Commissions: site already has another message for %s; leaving %s", c.ID, sent.messageID)
+			return nil
+		}
 		if _, derr := p.session.ChannelDelete(sent.messageID); derr != nil {
 			log.Printf("Commissions: delete duplicate thread of %s: %v", c.ID, derr)
 		}
