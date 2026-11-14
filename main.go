@@ -11,6 +11,7 @@ import (
 
 	"github.com/alwinihza/discord-bot/bot"
 	"github.com/alwinihza/discord-bot/database"
+	"github.com/alwinihza/discord-bot/internal/commissions"
 	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/pkg/state"
@@ -40,6 +41,22 @@ func run() error {
 		log.Println("SITE_ADMIN_URL or SITE_ADMIN_SECRET is not set, /playlist-mod and /playlist are disabled")
 	}
 
+	var commissionsConfig *bot.CommissionsConfig
+	if channel := os.Getenv("COMMISSIONS_CHANNEL_ID"); channel == "" {
+		log.Println("COMMISSIONS_CHANNEL_ID is not set, commission posting is disabled")
+	} else if siteClient == nil {
+		log.Println("COMMISSIONS_CHANNEL_ID is set but SITE_ADMIN_URL or SITE_ADMIN_SECRET is not, commission posting is disabled")
+	} else {
+		managers, bad := commissions.ParseManagerIDs(os.Getenv("COMMISSION_MANAGER_IDS"))
+		for _, id := range bad {
+			log.Printf("COMMISSION_MANAGER_IDS: ignoring %q, it is not a Discord user id", id)
+		}
+		if len(managers) == 0 {
+			log.Println("COMMISSION_MANAGER_IDS has no valid ids, nobody can press commission buttons")
+		}
+		commissionsConfig = &bot.CommissionsConfig{ChannelID: channel, Managers: managers}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -63,7 +80,7 @@ func run() error {
 		}
 	}()
 
-	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), youtube.NewClient(os.Getenv("YOUTUBE_API_KEY")), siteClient)
+	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), youtube.NewClient(os.Getenv("YOUTUBE_API_KEY")), siteClient, commissionsConfig)
 	if err != nil {
 		return err
 	}
