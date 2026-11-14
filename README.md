@@ -1,6 +1,6 @@
 # Karaoke Discord bot
 
-Slash commands `/list-video`, `/search`, `/random`, `/stats` and `/setlist` over the karaoke
+Slash commands `/list-video`, `/search`, `/random`, `/stats`, `/setlist` and `/playlist` over the karaoke
 streams and the songs sung in them. Data lives in a SQLite file the bot creates
 and seeds from `database/seed.sql` on first start, then upgrades with
 `database/migrations/NNN_*.sql`, each applied once in order.
@@ -52,6 +52,16 @@ Channel, Send Messages and Embed Links there.
 
 Only members with Manage Messages see `/setlist` by default. Change that in
 Server Settings, Integrations.
+
+## Playlists
+
+`/playlist` lets any member manage their own shared playlists: `mine`, `create`, `add`,
+`remove`, `rename`, `delete` and `share`. A member owns the playlists they create from
+Discord, plus the ones their connected Discord account claimed on the site. The bot calls the
+site's admin listener (`SITE_ADMIN_URL`, `SITE_ADMIN_SECRET`) and acts for the member who ran
+the command. `SITE_PUBLIC_URL` is the address in the `/p/<id>` links the bot posts (default
+`https://fionastation.vercel.app`). Without the first two the command answers "not set up".
+`/playlist-mod` is the mods-only inspect and delete command.
 
 For bulk edits, open a SQL shell inside the running container:
 
