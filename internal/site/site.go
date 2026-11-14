@@ -191,7 +191,6 @@ func (c *Client) call(ctx context.Context, method, user, prefix string, segments
 }
 
 // The site answers a bad secret with "Forbidden" and a missing route with "Not Found".
-// Every other 403 or 404 names a playlist.
 func statusError(resp *http.Response, raw []byte) error {
 	var fail struct {
 		Error string `json:"error"`

@@ -25,7 +25,6 @@ type siteCall struct{ Method, Path, User, Body string }
 type ownerSite struct {
 	mu    sync.Mutex
 	calls []siteCall
-	// reply decides each answer from the request line, like "GET /admin/owner/playlists".
 	reply func(line string) (int, string)
 }
 

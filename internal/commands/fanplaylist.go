@@ -20,20 +20,18 @@ const (
 	maxMessage       = 2000
 )
 
-// userError is an already-escaped message for the caller.
-type userError string
+type escapedError string
 
-func (e userError) Error() string { return string(e) }
+func (e escapedError) Error() string { return string(e) }
 
-const notYourPlaylist = userError("That is not one of your playlists, pick one from the list")
+const notYourPlaylist = escapedError("That is not one of your playlists, pick one from the list")
 
 type playlistArgs struct{ playlist, name, song string }
 
 type playlistReply struct {
-	text       string
-	components []discordgo.MessageComponent
-	// public is posted to the channel after the private reply.
-	public string
+	text            string
+	components      []discordgo.MessageComponent
+	channelFollowup string
 }
 
 type playlistAction func(h *CommandHandler, ctx context.Context, user string, a playlistArgs) (playlistReply, error)
@@ -48,7 +46,6 @@ var playlistActions = map[string]playlistAction{
 	"share":  (*CommandHandler).playlistShare,
 }
 
-// actingUser is the account that sent the interaction. It never comes from an option.
 func actingUser(i *discordgo.InteractionCreate) string {
 	switch {
 	case i.Member != nil && i.Member.User != nil:
@@ -98,10 +95,10 @@ func (h *CommandHandler) Playlist(s *discordgo.Session, i *discordgo.Interaction
 		return
 	}
 	editPlaylist(s, i, reply.text, reply.components)
-	if reply.public == "" {
+	if reply.channelFollowup == "" {
 		return
 	}
-	if _, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{Content: reply.public, AllowedMentions: noMentions}); err != nil {
+	if _, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{Content: reply.channelFollowup, AllowedMentions: noMentions}); err != nil {
 		log.Printf("Error posting shared playlist: %v", err)
 	}
 }
@@ -151,11 +148,11 @@ func ownedID(a playlistArgs) (string, error) {
 func (h *CommandHandler) resolveSong(ctx context.Context, query string) (songID, label string, err error) {
 	choice, err := h.db.ResolveSong(ctx, strings.TrimSpace(query))
 	if errors.Is(err, database.ErrSongNotFound) {
-		return "", "", userError(fmt.Sprintf("No song matches %q", escapeMarkdown(embeds.Truncate(query, 100))))
+		return "", "", escapedError(fmt.Sprintf("No song matches %q", escapeMarkdown(embeds.Truncate(query, 100))))
 	}
 	if err != nil {
 		log.Printf("Error resolving song %q: %v", query, err)
-		return "", "", userError("Failed to look up the song, please try again")
+		return "", "", escapedError("Failed to look up the song, please try again")
 	}
 	return choice.ID, choice.Label(), nil
 }
@@ -218,7 +215,7 @@ func (h *CommandHandler) playlistRemove(ctx context.Context, user string, a play
 	}
 	entry, ok := findEntry(current.Entries, a.song)
 	if !ok {
-		return playlistReply{}, userError("That song is not in this playlist, pick one from the list")
+		return playlistReply{}, escapedError("That song is not in this playlist, pick one from the list")
 	}
 	p, err := h.site.RemoveSong(ctx, user, id, entry.SongID)
 	if err != nil {
@@ -227,7 +224,6 @@ func (h *CommandHandler) playlistRemove(ctx context.Context, user string, a play
 	return playlistReply{text: fmt.Sprintf("Removed %s from **%s**, now %s.\n%s", escapeMarkdown(entry.Title), escapeMarkdown(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID))}, nil
 }
 
-// findEntry takes an exact song id (what autocomplete sends) or a title that matches exactly one entry.
 func findEntry(entries []site.Entry, query string) (site.Entry, bool) {
 	query = strings.TrimSpace(query)
 	var match []site.Entry
@@ -285,8 +281,8 @@ func (h *CommandHandler) playlistShare(ctx context.Context, user string, a playl
 		return playlistReply{}, err
 	}
 	return playlistReply{
-		text:   "Shared in this channel.",
-		public: fmt.Sprintf("<@%s> shared **%s**, %s.\n%s", user, escapeMarkdown(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID)),
+		text:            "Shared in this channel.",
+		channelFollowup: fmt.Sprintf("<@%s> shared **%s**, %s.\n%s", user, escapeMarkdown(p.Name), songCount(len(p.Entries)), h.site.ViewLink(p.ID)),
 	}, nil
 }
 

@@ -169,7 +169,7 @@ func describePlaylist(p site.Summary) string {
 }
 
 func (h *CommandHandler) siteError(err error) string {
-	var user userError
+	var user escapedError
 	var rule *site.RuleError
 	switch {
 	case errors.As(err, &user):
