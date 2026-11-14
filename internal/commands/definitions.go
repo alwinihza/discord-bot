@@ -34,4 +34,22 @@ var Definitions = []*discordgo.ApplicationCommand{
 			Required: true,
 		}},
 	},
+	{
+		Name: "playlist-mod", Description: "Inspect or delete a shared playlist (mods)", Contexts: guildOnly,
+		DefaultMemberPermissions: &modsOnly,
+		Options: []*discordgo.ApplicationCommandOption{
+			playlistSubcommand("info", "Show a playlist's name and song count"),
+			playlistSubcommand("delete", "Delete a playlist after confirmation"),
+		},
+	},
+}
+
+func playlistSubcommand(name, description string) *discordgo.ApplicationCommandOption {
+	return &discordgo.ApplicationCommandOption{
+		Type: discordgo.ApplicationCommandOptionSubCommand, Name: name, Description: description,
+		Options: []*discordgo.ApplicationCommandOption{{
+			Type: discordgo.ApplicationCommandOptionString, Name: "link", Description: "Playlist link or id",
+			Required: true,
+		}},
+	}
 }

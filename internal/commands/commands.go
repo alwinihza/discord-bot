@@ -9,6 +9,7 @@ import (
 
 	"github.com/alwinihza/discord-bot/database"
 	"github.com/alwinihza/discord-bot/internal/embeds"
+	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/models"
 	"github.com/alwinihza/discord-bot/pkg/state"
@@ -28,24 +29,32 @@ type CommandHandler struct {
 	// announceChannel gets a post for every new stream; empty disables it.
 	announceChannel string
 	youtube         *youtube.Client
+	// site is nil when the admin URL or secret is unset.
+	site *site.Client
 }
 
-func NewCommandHandler(db *database.DB, pm *state.PaginationManager, announceChannel string, yt *youtube.Client) *CommandHandler {
-	return &CommandHandler{db: db, pm: pm, announceChannel: announceChannel, youtube: yt}
+func NewCommandHandler(db *database.DB, pm *state.PaginationManager, announceChannel string, yt *youtube.Client, sc *site.Client) *CommandHandler {
+	return &CommandHandler{db: db, pm: pm, announceChannel: announceChannel, youtube: yt, site: sc}
 }
 
 func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	return map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"list-video": h.ListVideo,
-		"random":     h.Random,
-		"search":     h.Search,
-		"stats":      h.Stats,
-		"setlist":    h.Setlist,
+		"list-video":   h.ListVideo,
+		"random":       h.Random,
+		"search":       h.Search,
+		"stats":        h.Stats,
+		"setlist":      h.Setlist,
+		"playlist-mod": h.PlaylistMod,
 	}
 }
 
 func (h *CommandHandler) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	switch id := i.MessageComponentData().CustomID; id {
+	id := i.MessageComponentData().CustomID
+	if strings.HasPrefix(id, "playlistmod:") {
+		h.handlePlaylistButton(s, i, id)
+		return
+	}
+	switch id {
 	case "close":
 		h.handleClose(s, i)
 	case "random":

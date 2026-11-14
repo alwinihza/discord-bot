@@ -11,6 +11,7 @@ import (
 
 	"github.com/alwinihza/discord-bot/bot"
 	"github.com/alwinihza/discord-bot/database"
+	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/pkg/state"
 )
@@ -30,6 +31,13 @@ func run() error {
 
 	if os.Getenv("YOUTUBE_API_KEY") == "" {
 		log.Println("YOUTUBE_API_KEY is not set, /setlist cannot add new streams")
+	}
+
+	var siteClient *site.Client
+	if url, secret := os.Getenv("SITE_ADMIN_URL"), os.Getenv("SITE_ADMIN_SECRET"); url != "" && secret != "" {
+		siteClient = site.NewClient(url, secret)
+	} else {
+		log.Println("SITE_ADMIN_URL or SITE_ADMIN_SECRET is not set, /playlist-mod is disabled")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -55,7 +63,7 @@ func run() error {
 		}
 	}()
 
-	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), youtube.NewClient(os.Getenv("YOUTUBE_API_KEY")))
+	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), youtube.NewClient(os.Getenv("YOUTUBE_API_KEY")), siteClient)
 	if err != nil {
 		return err
 	}
