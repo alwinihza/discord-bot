@@ -362,7 +362,7 @@ func (h *CommandHandler) playlistChoices(i *discordgo.InteractionCreate) []*disc
 		}
 		for _, p := range list {
 			if strings.Contains(strings.ToLower(p.Name), query) {
-				add(fmt.Sprintf("%s (%s)", p.Name, songCount(p.EntryCount)), p.ID)
+				add(fmt.Sprintf("%s (%s)", boundName(p.Name), songCount(p.EntryCount)), p.ID)
 			}
 		}
 	case focused.Name == "song" && sub.Name == "remove":

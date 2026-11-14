@@ -9,7 +9,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/alwinihza/discord-bot/internal/embeds"
 	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/bwmarrin/discordgo"
 )
@@ -166,11 +165,11 @@ const (
 	maxMarksPerLetter = 2
 )
 
-func displayName(s string) string {
+func boundName(s string) string {
 	var b strings.Builder
 	marks := 0
 	for _, r := range s {
-		if unicode.IsMark(r) {
+		if unicode.In(r, unicode.Mn, unicode.Me) {
 			if marks++; marks > maxMarksPerLetter {
 				continue
 			}
@@ -179,8 +178,24 @@ func displayName(s string) string {
 		}
 		b.WriteRune(r)
 	}
-	return escapeMarkdown(embeds.Truncate(b.String(), maxNameRunes))
+	r := []rune(b.String())
+	if len(r) <= maxNameRunes {
+		return string(r)
+	}
+	cut := maxNameRunes - 1
+	flagHalves := 0
+	for i := cut - 1; i >= 0 && isRegionalIndicator(r[i]); i-- {
+		flagHalves++
+	}
+	if flagHalves%2 == 1 {
+		cut--
+	}
+	return string(r[:cut]) + "…"
 }
+
+func isRegionalIndicator(r rune) bool { return r >= 0x1F1E6 && r <= 0x1F1FF }
+
+func displayName(s string) string { return escapeMarkdown(boundName(s)) }
 
 func describePlaylist(p site.Summary) string {
 	state := ""

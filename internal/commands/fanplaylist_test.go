@@ -609,3 +609,39 @@ func TestUnknownSongReplyShowsBackslashesOnce(t *testing.T) {
 		t.Errorf("reply = %q", got)
 	}
 }
+
+func TestBoundNameKeepsRealScriptsAndBoundsStackedMarks(t *testing.T) {
+	flags := strings.Repeat("a", 78) + "🇮🇩🇯🇵"
+	cases := []struct {
+		name, in, want string
+		maxRunes       int
+	}{
+		{"burmese", "ပြီး ကြွေး သီချင်း", "ပြီး ကြွေး သီချင်း", 0},
+		{"vietnamese", "Việt Nam tiếng", "Việt Nam tiếng", 0},
+		{"thai", "เพลงรักภาษาไทย ที่ดี", "เพลงรักภาษาไทย ที่ดี", 0},
+		{"hindi", "मेरी पसंदीदा गाने कौन", "मेरी पसंदीदा गाने कौन", 0},
+		{"keycap", "1️⃣ top 2️⃣", "1️⃣ top 2️⃣", 0},
+		{"zalgo", "a" + strings.Repeat("́", 40) + "b", "á́b", 0},
+		{"flag pair not split", flags, strings.Repeat("a", 78) + "…", 80},
+	}
+	for _, c := range cases {
+		got := boundName(c.in)
+		if got != c.want {
+			t.Errorf("%s: boundName = %q, want %q", c.name, got, c.want)
+		}
+		if c.maxRunes > 0 && len([]rune(got)) > c.maxRunes {
+			t.Errorf("%s: %d runes", c.name, len([]rune(got)))
+		}
+	}
+}
+
+func TestPlaylistAutocompleteBoundsStackedMarksWithinChoiceLimit(t *testing.T) {
+	o := okSite(stackedName, "Halu")
+	h := fanHandler(o.client(t))
+	s, fd := newSession(t)
+	h.Autocomplete(s, focus(fan(userA, "rename", "playlist", "a", "name", ""), "playlist"))
+	names, _ := choiceNames(fd)
+	if len(names) != 1 || len([]rune(names[0])) > 100 || strings.Contains(names[0], strings.Repeat("́", 3)) || !strings.HasSuffix(names[0], "(1 song)") {
+		t.Errorf("choice = %q", names)
+	}
+}
