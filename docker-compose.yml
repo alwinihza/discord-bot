@@ -11,6 +11,8 @@ services:
       SITE_ADMIN_URL: ${SITE_ADMIN_URL:-}
       SITE_ADMIN_SECRET: ${SITE_ADMIN_SECRET:-}
       SITE_PUBLIC_URL: ${SITE_PUBLIC_URL:-}
+      COMMISSIONS_CHANNEL_ID: ${COMMISSIONS_CHANNEL_ID:-}
+      COMMISSION_MANAGER_IDS: ${COMMISSION_MANAGER_IDS:-}
     volumes:
       - botdata:/data
     restart: always

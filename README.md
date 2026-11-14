@@ -92,6 +92,23 @@ the command. `SITE_PUBLIC_URL` is the address in the `/p/<id>` links the bot pos
 `https://fionastation.vercel.app`). Without the first two the command answers "not set up".
 `/playlist-mod` is the mods-only inspect and delete command.
 
+## Commissions
+
+Commission and inquiry forms on the site (voice licensing, Paopoa Studio covers, brand
+endorsements) reach Discord through the bot. Every 30 seconds the bot asks the site's admin
+listener for new inquiries. It posts each one as an embed in `COMMISSIONS_CHANNEL_ID`, starts a
+thread on it and tells the site where it went. Leave `COMMISSIONS_CHANNEL_ID` empty to turn this
+off. It also needs `SITE_ADMIN_URL` and `SITE_ADMIN_SECRET`.
+
+The buttons under an embed are the statuses the site allows next. Only the Discord user ids in
+`COMMISSION_MANAGER_IDS` (comma-separated) can press them. Everyone else gets a private refusal.
+"Quoted" and "Declined" ask for an optional note first. After each change the bot updates the
+embed and writes a line in the thread. The site decides which changes are legal and the client
+sees progress on the tracking page.
+
+If the bot restarts between posting a message and telling the site, that inquiry is posted
+again on the next poll and the earlier message is left in the channel. Delete it by hand.
+
 ## Re-seed from scratch
 
 The seed only runs when the database is empty. To load a changed `seed.sql`,
