@@ -29,8 +29,7 @@ type CommandHandler struct {
 	// announceChannel gets a post for every new stream; empty disables it.
 	announceChannel string
 	youtube         *youtube.Client
-	// site is nil when the admin URL or secret is unset.
-	site *site.Client
+	site            *site.Client
 }
 
 func NewCommandHandler(db *database.DB, pm *state.PaginationManager, announceChannel string, yt *youtube.Client, sc *site.Client) *CommandHandler {

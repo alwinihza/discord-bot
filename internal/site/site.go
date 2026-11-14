@@ -1,5 +1,3 @@
-// Package site calls the Fiona Station site's admin listener, which only
-// containers on the shared Docker network can reach.
 package site
 
 import (
@@ -16,13 +14,10 @@ import (
 )
 
 var (
-	// ErrNotFound means the site has no playlist with this id.
-	ErrNotFound = errors.New("playlist not found")
-	// ErrForbidden means the site rejected the bot's admin secret.
+	ErrNotFound  = errors.New("playlist not found")
 	ErrForbidden = errors.New("site rejected the admin secret")
 )
 
-// Summary is what the admin listener reports about one playlist.
 type Summary struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -46,13 +41,10 @@ func NewClient(baseURL, secret string) *Client {
 	}
 }
 
-// Info reads a playlist's summary.
 func (c *Client) Info(ctx context.Context, id string) (Summary, error) {
 	return c.do(ctx, http.MethodGet, "/admin/playlists/"+id)
 }
 
-// Delete deletes a playlist and returns its summary afterwards. Deleting an
-// already deleted playlist succeeds.
 func (c *Client) Delete(ctx context.Context, id string) (Summary, error) {
 	return c.do(ctx, http.MethodDelete, "/admin/playlists/"+id)
 }
@@ -90,8 +82,6 @@ func (c *Client) do(ctx context.Context, method, path string) (Summary, error) {
 
 var bareID = regexp.MustCompile(`^[0-9A-Za-z]{8}$`)
 
-// PlaylistID extracts the id from a share link, a link with an #edit= token,
-// or a bare id. It never returns any part of the input beyond the id.
 func PlaylistID(input string) (string, bool) {
 	input = strings.TrimSpace(input)
 	if bareID.MatchString(input) {

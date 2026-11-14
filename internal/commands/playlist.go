@@ -20,7 +20,6 @@ const (
 	deleteTimeout = 10 * time.Second
 )
 
-// PlaylistMod handles /playlist-mod info|delete for mods.
 func (h *CommandHandler) PlaylistMod(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if h.site == nil {
 		shared.RespondWithError(s, i, "Playlist moderation is not set up on this bot")
