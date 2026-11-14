@@ -35,6 +35,24 @@ var Definitions = []*discordgo.ApplicationCommand{
 		}},
 	},
 	{
+		Name: "playlist", Description: "Manage your shared playlists", Contexts: guildOnly,
+		Options: []*discordgo.ApplicationCommandOption{
+			fanSubcommand("mine", "List your playlists"),
+			fanSubcommand("create", "Start a playlist with one song",
+				fanOption("name", "Playlist name", false), fanOption("song", "First song", true)),
+			fanSubcommand("add", "Add a song to a playlist",
+				fanOption("playlist", "Your playlist", true), fanOption("song", "Song to add", true)),
+			fanSubcommand("remove", "Remove a song from a playlist",
+				fanOption("playlist", "Your playlist", true), fanOption("song", "Song to remove", true)),
+			fanSubcommand("rename", "Rename a playlist",
+				fanOption("playlist", "Your playlist", true), fanOption("name", "New name", false)),
+			fanSubcommand("delete", "Delete a playlist after confirmation",
+				fanOption("playlist", "Your playlist", true)),
+			fanSubcommand("share", "Post a playlist's link in this channel",
+				fanOption("playlist", "Your playlist", true)),
+		},
+	},
+	{
 		Name: "playlist-mod", Description: "Inspect or delete a shared playlist (mods)", Contexts: guildOnly,
 		DefaultMemberPermissions: &modsOnly,
 		Options: []*discordgo.ApplicationCommandOption{
@@ -42,6 +60,23 @@ var Definitions = []*discordgo.ApplicationCommand{
 			playlistSubcommand("delete", "Delete a playlist after confirmation"),
 		},
 	},
+}
+
+func fanSubcommand(name, description string, options ...*discordgo.ApplicationCommandOption) *discordgo.ApplicationCommandOption {
+	return &discordgo.ApplicationCommandOption{
+		Type: discordgo.ApplicationCommandOptionSubCommand, Name: name, Description: description, Options: options,
+	}
+}
+
+func fanOption(name, description string, autocomplete bool) *discordgo.ApplicationCommandOption {
+	opt := &discordgo.ApplicationCommandOption{
+		Type: discordgo.ApplicationCommandOptionString, Name: name, Description: description,
+		Required: true, Autocomplete: autocomplete,
+	}
+	if !autocomplete {
+		opt.MaxLength = 100
+	}
+	return opt
 }
 
 func playlistSubcommand(name, description string) *discordgo.ApplicationCommandOption {

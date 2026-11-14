@@ -117,3 +117,19 @@ func TestCoversAndOriginalsAreListedAndCounted(t *testing.T) {
 		t.Fatalf("Fated Rendezvous is still split across names: %+v", st.OtherMatches)
 	}
 }
+
+func TestResolveSongByIDAndByText(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	byText, err := db.ResolveSong(ctx, "celengan rindu")
+	if err != nil || byText.ID == "" || byText.Title == "" {
+		t.Fatalf("by text: %+v, %v", byText, err)
+	}
+	byID, err := db.ResolveSong(ctx, byText.ID)
+	if err != nil || byID.ID != byText.ID || byID.Title != byText.Title {
+		t.Fatalf("by id: %+v, %v", byID, err)
+	}
+	if _, err := db.ResolveSong(ctx, "zzzznosuchsong"); !errors.Is(err, ErrSongNotFound) {
+		t.Errorf("unknown song: %v", err)
+	}
+}

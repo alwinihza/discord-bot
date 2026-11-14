@@ -51,14 +51,11 @@ func (h *CommandHandler) Stats(s *discordgo.Session, i *discordgo.InteractionCre
 	}
 }
 
-func (h *CommandHandler) Autocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.ApplicationCommandData().Name != "stats" {
-		return
-	}
+func (h *CommandHandler) songChoices(query string) []*discordgo.ApplicationCommandOptionChoice {
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
 
-	songs, err := h.db.SongChoices(ctx, songOption(i), maxChoices)
+	songs, err := h.db.SongChoices(ctx, query, maxChoices)
 	if err != nil {
 		log.Printf("Error listing song choices: %v", err)
 	}
@@ -69,7 +66,20 @@ func (h *CommandHandler) Autocomplete(s *discordgo.Session, i *discordgo.Interac
 			Value: c.ID,
 		}
 	}
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	return choices
+}
+
+func (h *CommandHandler) Autocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	var choices []*discordgo.ApplicationCommandOptionChoice
+	switch i.ApplicationCommandData().Name {
+	case "stats":
+		choices = h.songChoices(songOption(i))
+	case "playlist":
+		choices = h.playlistChoices(i)
+	default:
+		return
+	}
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
 		Data: &discordgo.InteractionResponseData{Choices: choices},
 	})

@@ -83,17 +83,7 @@ func (h *CommandHandler) PlaylistMod(s *discordgo.Session, i *discordgo.Interact
 
 func (h *CommandHandler) handlePlaylistButton(s *discordgo.Session, i *discordgo.InteractionCreate, customID string) {
 	if customID == playlistCancelID {
-		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:         "Cancelled. The playlist is unchanged.",
-				Components:      []discordgo.MessageComponent{},
-				AllowedMentions: noMentions,
-			},
-		})
-		if err != nil {
-			log.Printf("Error cancelling playlist delete: %v", err)
-		}
+		cancelPlaylistDelete(s, i)
 		return
 	}
 
@@ -118,6 +108,20 @@ func (h *CommandHandler) handlePlaylistButton(s *discordgo.Session, i *discordgo
 		content = "❌ " + h.siteError(err)
 	}
 	editPlaylist(s, i, content, []discordgo.MessageComponent{})
+}
+
+func cancelPlaylistDelete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:         "Cancelled. The playlist is unchanged.",
+			Components:      []discordgo.MessageComponent{},
+			AllowedMentions: noMentions,
+		},
+	})
+	if err != nil {
+		log.Printf("Error cancelling playlist delete: %v", err)
+	}
 }
 
 func respondPlaylist(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) {
@@ -156,20 +160,78 @@ func escapeMarkdown(s string) string {
 	return b.String()
 }
 
+const (
+	maxNameRunes      = 80
+	maxMarksPerLetter = 2
+)
+
+func boundName(s string) string {
+	var b strings.Builder
+	marks := 0
+	for _, r := range s {
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			if marks++; marks > maxMarksPerLetter {
+				continue
+			}
+		} else {
+			marks = 0
+		}
+		b.WriteRune(r)
+	}
+	r := []rune(b.String())
+	if len(r) <= maxNameRunes {
+		return string(r)
+	}
+	cut := maxNameRunes - 1
+	flagHalves := 0
+	for i := cut - 1; i >= 0 && isRegionalIndicator(r[i]); i-- {
+		flagHalves++
+	}
+	if flagHalves%2 == 1 {
+		cut--
+	}
+	return string(r[:cut]) + "…"
+}
+
+func isRegionalIndicator(r rune) bool { return r >= 0x1F1E6 && r <= 0x1F1FF }
+
+func displayName(s string) string { return escapeMarkdown(boundName(s)) }
+
 func describePlaylist(p site.Summary) string {
 	state := ""
 	if p.Deleted {
 		state = " (deleted)"
 	}
-	return fmt.Sprintf("**%s**%s\n%d songs, created %s, updated %s", escapeMarkdown(p.Name), state, p.EntryCount, p.CreatedAt, p.UpdatedAt)
+	return fmt.Sprintf("**%s**%s\n%d songs, created %s, updated %s", displayName(p.Name), state, p.EntryCount, p.CreatedAt, p.UpdatedAt)
 }
 
 func (h *CommandHandler) siteError(err error) string {
+	var user escapedError
+	var rule *site.RuleError
 	switch {
+	case errors.As(err, &user):
+		return string(user)
+	case errors.As(err, &rule):
+		return escapeMarkdown(rule.Message)
 	case errors.Is(err, site.ErrInvalidID):
 		return "That is not a playlist link or id"
+	case errors.Is(err, site.ErrSongNotInPlaylist):
+		return "That song is not in this playlist, pick one from the list"
 	case errors.Is(err, site.ErrNotFound):
 		return "No playlist with that id"
+	case errors.Is(err, site.ErrNotOwner):
+		return "That playlist belongs to someone else"
+	case errors.Is(err, site.ErrDeleted):
+		return "That playlist was deleted"
+	case errors.Is(err, site.ErrConflict):
+		return "The playlist changed while you were editing it, please try again"
+	case errors.Is(err, site.ErrRateLimited):
+		return "Slow down: the site limits how often playlists can be created and edited. Try again later"
+	case errors.Is(err, site.ErrDailyCap):
+		return "The site reached its limit for new playlists today, try again tomorrow"
+	case errors.Is(err, site.ErrNoOwnerAPI):
+		log.Printf("Site has no owner routes yet")
+		return "The site does not support playlists from Discord yet, try again after its next update"
 	case errors.Is(err, site.ErrForbidden):
 		log.Printf("Site rejected the admin secret")
 		return "The site rejected the bot's admin secret, ask the operator to check SITE_ADMIN_SECRET"

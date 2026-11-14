@@ -10,6 +10,7 @@ services:
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
       SITE_ADMIN_URL: ${SITE_ADMIN_URL:-}
       SITE_ADMIN_SECRET: ${SITE_ADMIN_SECRET:-}
+      SITE_PUBLIC_URL: ${SITE_PUBLIC_URL:-}
     volumes:
       - botdata:/data
     restart: always

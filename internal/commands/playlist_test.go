@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/bwmarrin/discordgo"
@@ -24,21 +25,28 @@ type discordCall struct {
 	Method string
 	Path   string
 	Body   map[string]any
+	Status int
 }
 
+// fakeDiscord refuses content over Discord's 2000 character limit, as Discord does, and can refuse every followup.
 type fakeDiscord struct {
-	mu    sync.Mutex
-	calls []discordCall
+	mu           sync.Mutex
+	calls        []discordCall
+	failFollowup bool
 }
 
 func (f *fakeDiscord) RoundTrip(r *http.Request) (*http.Response, error) {
 	raw, _ := io.ReadAll(r.Body)
 	var body map[string]any
 	json.Unmarshal(raw, &body)
+	call := discordCall{Method: r.Method, Path: r.URL.Path, Body: body, Status: 200}
+	if utf8.RuneCountInString(contentOf(call)) > 2000 || f.failFollowup && r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/webhooks/2/tok") {
+		call.Status = 400
+	}
 	f.mu.Lock()
-	f.calls = append(f.calls, discordCall{r.Method, r.URL.Path, body})
+	f.calls = append(f.calls, call)
 	f.mu.Unlock()
-	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}")), Header: http.Header{}, Request: r}, nil
+	return &http.Response{StatusCode: call.Status, Body: io.NopCloser(strings.NewReader("{}")), Header: http.Header{}, Request: r}, nil
 }
 
 func (f *fakeDiscord) snapshot() []discordCall {
@@ -62,7 +70,7 @@ func newSite(t *testing.T, h http.HandlerFunc) *site.Client {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return site.NewClient(srv.URL, "secret")
+	return site.NewClient(srv.URL, "secret", "https://fio.example")
 }
 
 func summaryHandler(name string) http.HandlerFunc {

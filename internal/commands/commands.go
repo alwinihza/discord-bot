@@ -44,6 +44,7 @@ func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Sessi
 		"stats":        h.Stats,
 		"setlist":      h.Setlist,
 		"playlist-mod": h.PlaylistMod,
+		"playlist":     h.Playlist,
 	}
 }
 
@@ -51,6 +52,10 @@ func (h *CommandHandler) HandleInteraction(s *discordgo.Session, i *discordgo.In
 	id := i.MessageComponentData().CustomID
 	if strings.HasPrefix(id, "playlistmod:") {
 		h.handlePlaylistButton(s, i, id)
+		return
+	}
+	if strings.HasPrefix(id, "playlist:") {
+		h.handleFanPlaylistButton(s, i, id)
 		return
 	}
 	switch id {
