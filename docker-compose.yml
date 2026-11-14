@@ -8,6 +8,8 @@ services:
       DATABASE_PATH: /data/karaoke.db
       ANNOUNCE_CHANNEL_ID: ${ANNOUNCE_CHANNEL_ID:-}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      SITE_ADMIN_URL: ${SITE_ADMIN_URL:-}
+      SITE_ADMIN_SECRET: ${SITE_ADMIN_SECRET:-}
     volumes:
       - botdata:/data
     restart: always
