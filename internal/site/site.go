@@ -16,6 +16,7 @@ import (
 var (
 	ErrNotFound  = errors.New("playlist not found")
 	ErrForbidden = errors.New("site rejected the admin secret")
+	ErrInvalidID = errors.New("invalid playlist id")
 )
 
 type Summary struct {
@@ -37,15 +38,24 @@ func NewClient(baseURL, secret string) *Client {
 	return &Client{
 		base:   strings.TrimRight(baseURL, "/"),
 		secret: secret,
-		http:   &http.Client{Timeout: 10 * time.Second},
+		http: &http.Client{
+			Timeout:       10 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
 	}
 }
 
 func (c *Client) Info(ctx context.Context, id string) (Summary, error) {
+	if !bareID.MatchString(id) {
+		return Summary{}, ErrInvalidID
+	}
 	return c.do(ctx, http.MethodGet, "/admin/playlists/"+id)
 }
 
 func (c *Client) Delete(ctx context.Context, id string) (Summary, error) {
+	if !bareID.MatchString(id) {
+		return Summary{}, ErrInvalidID
+	}
 	return c.do(ctx, http.MethodDelete, "/admin/playlists/"+id)
 }
 

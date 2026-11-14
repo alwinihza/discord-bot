@@ -24,7 +24,7 @@ func fakeSite(t *testing.T) (*Client, *[]string) {
 		case "/admin/playlists/Rainy123":
 			deleted := r.Method == http.MethodDelete
 			w.Write([]byte(`{"id":"Rainy123","name":"Rainy","entryCount":12,"createdAt":"a","updatedAt":"b","deleted":` + map[bool]string{true: "true", false: "false"}[deleted] + `}`))
-		case "/admin/playlists/Broken12":
+		case "/admin/playlists/Broken1x":
 			http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
 		default:
 			http.Error(w, `{"error":"No such playlist"}`, http.StatusNotFound)
@@ -51,17 +51,17 @@ func TestInfoAndDelete(t *testing.T) {
 
 func TestStatusErrors(t *testing.T) {
 	c, _ := fakeSite(t)
-	if _, err := c.Info(context.Background(), "Missing12"); !errors.Is(err, ErrNotFound) {
+	if _, err := c.Info(context.Background(), "Missing1"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown id: %v", err)
 	}
-	if _, err := c.Delete(context.Background(), "Missing12"); !errors.Is(err, ErrNotFound) {
+	if _, err := c.Delete(context.Background(), "Missing1"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("delete unknown id: %v", err)
 	}
 	wrong := NewClient(c.base, "wrong")
 	if _, err := wrong.Info(context.Background(), "Rainy123"); !errors.Is(err, ErrForbidden) {
 		t.Errorf("wrong secret: %v", err)
 	}
-	if _, err := c.Info(context.Background(), "Broken12"); err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrForbidden) {
+	if _, err := c.Info(context.Background(), "Broken1x"); err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrForbidden) {
 		t.Errorf("server error: %v", err)
 	}
 }
@@ -105,5 +105,43 @@ func TestPlaylistID(t *testing.T) {
 		if id != c.id || ok != c.want {
 			t.Errorf("PlaylistID(%q) = %q, %v; want %q, %v", c.in, id, ok, c.id, c.want)
 		}
+	}
+}
+
+func TestClientRejectsMalformedIDsBeforeAnyRequest(t *testing.T) {
+	c, calls := fakeSite(t)
+	for _, id := range []string{"../../x", "a?all=1", "a#frag", "a/../../b", "", "short", "waytoolong1"} {
+		if _, err := c.Info(context.Background(), id); !errors.Is(err, ErrInvalidID) {
+			t.Errorf("Info(%q) err = %v, want ErrInvalidID", id, err)
+		}
+		if _, err := c.Delete(context.Background(), id); !errors.Is(err, ErrInvalidID) {
+			t.Errorf("Delete(%q) err = %v, want ErrInvalidID", id, err)
+		}
+	}
+	if len(*calls) != 0 {
+		t.Errorf("site saw %v", *calls)
+	}
+}
+
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	var otherHits int
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otherHits++
+		w.Write([]byte(`{"id":"Rainy123","name":"Impostor","entryCount":1}`))
+	}))
+	t.Cleanup(other.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/anything", http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+	c := NewClient(redirector.URL, secret)
+	if s, err := c.Info(context.Background(), "Rainy123"); err == nil {
+		t.Errorf("Info followed a redirect and returned %+v", s)
+	}
+	if _, err := c.Delete(context.Background(), "Rainy123"); err == nil {
+		t.Error("Delete accepted a redirect")
+	}
+	if otherHits != 0 {
+		t.Errorf("redirect target was called %d times", otherHits)
 	}
 }

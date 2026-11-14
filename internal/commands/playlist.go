@@ -7,22 +7,32 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alwinihza/discord-bot/internal/site"
-	"github.com/alwinihza/discord-bot/shared"
 	"github.com/bwmarrin/discordgo"
 )
 
 const (
 	playlistConfirmPrefix = "playlistmod:confirm:"
 	playlistCancelID      = "playlistmod:cancel"
-	// The delete runs after the interaction is acknowledged, so it may take longer than 3s.
-	deleteTimeout = 10 * time.Second
+	// Every site call runs after the interaction is acknowledged, so it may outlast Discord's 3s window.
+	siteTimeout = 10 * time.Second
 )
 
+var noMentions = &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{}}
+
+func isMod(i *discordgo.InteractionCreate) bool {
+	return i.Member != nil && i.Member.Permissions&discordgo.PermissionManageMessages != 0
+}
+
 func (h *CommandHandler) PlaylistMod(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !isMod(i) {
+		respondPlaylist(s, i, "❌ Only mods can use this command", nil)
+		return
+	}
 	if h.site == nil {
-		shared.RespondWithError(s, i, "Playlist moderation is not set up on this bot")
+		respondPlaylist(s, i, "❌ Playlist moderation is not set up on this bot", nil)
 		return
 	}
 	sub := i.ApplicationCommandData().Options[0]
@@ -34,27 +44,35 @@ func (h *CommandHandler) PlaylistMod(s *discordgo.Session, i *discordgo.Interact
 	}
 	id, ok := site.PlaylistID(link)
 	if !ok {
-		shared.RespondWithError(s, i, "That is not a playlist link or id")
+		respondPlaylist(s, i, "❌ That is not a playlist link or id", nil)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral, AllowedMentions: noMentions},
+	}); err != nil {
+		log.Printf("Error acknowledging playlist-mod: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), siteTimeout)
 	defer cancel()
 	summary, err := h.site.Info(ctx, id)
 	if err != nil {
-		shared.RespondWithError(s, i, h.siteError(err))
+		editPlaylist(s, i, "❌ "+h.siteError(err), nil)
 		return
 	}
 
 	switch sub.Name {
 	case "info":
-		respondEphemeral(s, i, describePlaylist(summary), nil)
+		editPlaylist(s, i, describePlaylist(summary), nil)
 	case "delete":
 		if summary.Deleted {
-			respondEphemeral(s, i, describePlaylist(summary)+"\nIt is already deleted.", nil)
+			editPlaylist(s, i, describePlaylist(summary)+"\nIt is already deleted.", nil)
 			return
 		}
-		respondEphemeral(s, i, "Delete this playlist? Its link stops working.\n"+describePlaylist(summary), []discordgo.MessageComponent{
+		editPlaylist(s, i, "Delete this playlist? Its link stops working.\n"+describePlaylist(summary), []discordgo.MessageComponent{
 			discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 				discordgo.Button{Label: "Delete", Style: discordgo.DangerButton, CustomID: playlistConfirmPrefix + id},
 				discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: playlistCancelID},
@@ -67,7 +85,11 @@ func (h *CommandHandler) handlePlaylistButton(s *discordgo.Session, i *discordgo
 	if customID == playlistCancelID {
 		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{Content: "Cancelled. The playlist is unchanged.", Components: []discordgo.MessageComponent{}},
+			Data: &discordgo.InteractionResponseData{
+				Content:         "Cancelled. The playlist is unchanged.",
+				Components:      []discordgo.MessageComponent{},
+				AllowedMentions: noMentions,
+			},
 		})
 		if err != nil {
 			log.Printf("Error cancelling playlist delete: %v", err)
@@ -76,38 +98,62 @@ func (h *CommandHandler) handlePlaylistButton(s *discordgo.Session, i *discordgo
 	}
 
 	id := strings.TrimPrefix(customID, playlistConfirmPrefix)
-	if h.site == nil || i.Member == nil || i.Member.Permissions&discordgo.PermissionManageMessages == 0 {
-		shared.RespondWithError(s, i, "Only mods can delete playlists")
+	if h.site == nil || !isMod(i) {
+		respondPlaylist(s, i, "❌ Only mods can delete playlists", nil)
 		return
 	}
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredMessageUpdate,
+		Data: &discordgo.InteractionResponseData{AllowedMentions: noMentions},
 	}); err != nil {
 		log.Printf("Error acknowledging playlist delete: %v", err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), siteTimeout)
 	defer cancel()
 	summary, err := h.site.Delete(ctx, id)
 	content := "Deleted.\n" + describePlaylist(summary)
 	if err != nil {
 		content = "❌ " + h.siteError(err)
 	}
-	empty := []discordgo.MessageComponent{}
-	if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content, Components: &empty}); err != nil {
-		log.Printf("Error reporting playlist delete: %v", err)
-	}
+	editPlaylist(s, i, content, []discordgo.MessageComponent{})
 }
 
-func respondEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) {
+func respondPlaylist(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: content, Components: components, Flags: discordgo.MessageFlagsEphemeral},
+		Data: &discordgo.InteractionResponseData{Content: content, Components: components, Flags: discordgo.MessageFlagsEphemeral, AllowedMentions: noMentions},
 	})
 	if err != nil {
 		log.Printf("Error sending playlist reply: %v", err)
 	}
+}
+
+func editPlaylist(s *discordgo.Session, i *discordgo.InteractionCreate, content string, components []discordgo.MessageComponent) {
+	if components == nil {
+		components = []discordgo.MessageComponent{}
+	}
+	if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content, Components: &components, AllowedMentions: noMentions}); err != nil {
+		log.Printf("Error editing playlist reply: %v", err)
+	}
+}
+
+// escapeMarkdown backslash-escapes every ASCII punctuation mark, which Discord renders literally, and flattens newlines.
+func escapeMarkdown(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n' || r == '\r':
+			b.WriteByte(' ')
+		case r < unicode.MaxASCII && unicode.IsPunct(r) || r == '`' || r == '|' || r == '~' || r == '<' || r == '>' || r == '+' || r == '=' || r == '$' || r == '^':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func describePlaylist(p site.Summary) string {
@@ -115,11 +161,13 @@ func describePlaylist(p site.Summary) string {
 	if p.Deleted {
 		state = " (deleted)"
 	}
-	return fmt.Sprintf("**%s**%s\n%d songs, created %s, updated %s", p.Name, state, p.EntryCount, p.CreatedAt, p.UpdatedAt)
+	return fmt.Sprintf("**%s**%s\n%d songs, created %s, updated %s", escapeMarkdown(p.Name), state, p.EntryCount, p.CreatedAt, p.UpdatedAt)
 }
 
 func (h *CommandHandler) siteError(err error) string {
 	switch {
+	case errors.Is(err, site.ErrInvalidID):
+		return "That is not a playlist link or id"
 	case errors.Is(err, site.ErrNotFound):
 		return "No playlist with that id"
 	case errors.Is(err, site.ErrForbidden):
