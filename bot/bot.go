@@ -28,7 +28,6 @@ type Bot struct {
 	pollerDone  chan struct{}
 }
 
-// CommissionsConfig switches the commission feature on. The bot needs a site client for it.
 type CommissionsConfig struct {
 	ChannelID string
 	Managers  map[string]bool

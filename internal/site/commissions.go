@@ -36,7 +36,6 @@ type Quote struct {
 	Reason  string      `json:"reason"`
 }
 
-// Commission keeps Fields loosely typed so new form fields need no bot change.
 type Commission struct {
 	ID        string         `json:"id"`
 	Kind      string         `json:"kind"`

@@ -85,7 +85,7 @@ func TestIsManager(t *testing.T) {
 }
 
 func TestPlainButtonSendsEventAndUpdatesMessage(t *testing.T) {
-	fs := &fakeSite{eventReply: ""}
+	fs := &fakeSite{}
 	fs.eventReply = updatedJSON(t, "in_progress", "preview")
 	h, s, fd := newHandler(t, fs)
 
@@ -174,7 +174,7 @@ func TestModalSubmitWithoutNoteOmitsIt(t *testing.T) {
 }
 
 func TestSiteRefusalGoesToPresserOnly(t *testing.T) {
-	fs := &fakeSite{eventStatus: 400, eventReply: `{"error":"cannot go from final to quoted"}`}
+	fs := &fakeSite{eventStatusByCall: 400, eventReply: `{"error":"cannot go from final to quoted"}`}
 	h, s, fd := newHandler(t, fs)
 
 	h.HandleButton(s, pressed(manager, ButtonID(Action{"c1", "in_progress"})))
@@ -192,7 +192,7 @@ func TestSiteRefusalGoesToPresserOnly(t *testing.T) {
 }
 
 func TestSiteDownGivesGenericEphemeralError(t *testing.T) {
-	fs := &fakeSite{eventStatus: 500, eventReply: `oops`}
+	fs := &fakeSite{eventStatusByCall: 500, eventReply: `oops`}
 	h, s, fd := newHandler(t, fs)
 
 	h.HandleButton(s, pressed(manager, ButtonID(Action{"c1", "in_progress"})))

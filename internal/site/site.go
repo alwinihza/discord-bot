@@ -150,7 +150,6 @@ func (c *Client) call(ctx context.Context, method, user, prefix string, segments
 	return c.roundTrip(ctx, method, path, user, in, out, statusError)
 }
 
-// roundTrip sends one authenticated request. mapErr turns a non-success response into an error.
 func (c *Client) roundTrip(ctx context.Context, method, path, user string, in, out any, mapErr func(*http.Response, []byte) error) error {
 	var body io.Reader
 	if in != nil {

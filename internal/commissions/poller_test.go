@@ -36,7 +36,7 @@ func TestPollerPostsEachCommissionOnce(t *testing.T) {
 
 func TestPollerRetriesPostedBeforeSendingAgain(t *testing.T) {
 	fs := &fakeSite{unposted: []site.Commission{commission("c1")}}
-	fs.postedStatus = func(n int, _ string) int {
+	fs.postedStatusByCall = func(n int, _ string) int {
 		if n == 1 {
 			return 500
 		}
@@ -63,7 +63,7 @@ func TestPollerRetriesPostedBeforeSendingAgain(t *testing.T) {
 
 func TestPollerDeletesItsMessageOnConflict(t *testing.T) {
 	fs := &fakeSite{unposted: []site.Commission{commission("c1")}}
-	fs.postedStatus = func(int, string) int { return 409 }
+	fs.postedStatusByCall = func(int, string) int { return 409 }
 	p, fd := newPoller(t, fs)
 	ctx := context.Background()
 
@@ -151,7 +151,7 @@ func TestSeedIgnoresForeignAndMalformedMessages(t *testing.T) {
 		botMessage("nofooter", botID, "something else "+id),
 		{"id": "plain", "author": map[string]any{"id": botID}},
 	}
-	p.seed()
+	p.adoptMessagesFromBeforeRestart()
 	p.Tick(context.Background())
 
 	if n := fd.count("POST", "/channels/"+channel+"/messages"); n != 1 {
@@ -168,7 +168,7 @@ func TestSeedFailureStillPosts(t *testing.T) {
 	p, fd := newPoller(t, fs)
 	fd.historyFails = true
 
-	p.seed()
+	p.adoptMessagesFromBeforeRestart()
 	p.Tick(context.Background())
 
 	if n := fd.count("POST", "/channels/"+channel+"/messages"); n != 1 {
@@ -182,11 +182,11 @@ func TestSeedFailureStillPosts(t *testing.T) {
 func TestAdoptedMessageIsKeptOnConflict(t *testing.T) {
 	id := "33333333-3333-3333-3333-333333333333"
 	fs := &fakeSite{unposted: []site.Commission{commission(id)}}
-	fs.postedStatus = func(int, string) int { return 409 }
+	fs.postedStatusByCall = func(int, string) int { return 409 }
 	p, fd := newPoller(t, fs)
 	fd.history = []map[string]any{botMessage("orphan1", botID, "Commission "+id)}
 
-	p.seed()
+	p.adoptMessagesFromBeforeRestart()
 	p.Tick(context.Background())
 	p.Tick(context.Background())
 

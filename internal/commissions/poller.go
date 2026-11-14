@@ -22,13 +22,10 @@ const (
 
 var noMentions = &discordgo.MessageAllowedMentions{}
 
-// posting is what this process knows about one commission it has sent to Discord.
-// It outlives a failed /posted call so the next tick retries /posted instead of sending again.
 type posting struct {
-	messageID string
-	done      bool
-	// adopted marks a message found in the channel at startup rather than sent this run.
-	adopted bool
+	messageID      string
+	done           bool
+	foundAtStartup bool
 }
 
 type Poller struct {
@@ -45,7 +42,7 @@ func NewPoller(sc *site.Client, s *discordgo.Session, channelID string) *Poller 
 
 // Run polls until ctx ends. It returns once the in-flight tick has finished.
 func (p *Poller) Run(ctx context.Context) {
-	p.seed()
+	p.adoptMessagesFromBeforeRestart()
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
@@ -58,9 +55,7 @@ func (p *Poller) Run(ctx context.Context) {
 	}
 }
 
-// seed adopts commission messages this bot already sent, so a restart between the send and
-// /posted retries /posted instead of sending a second message. Discord is the source of truth.
-func (p *Poller) seed() {
+func (p *Poller) adoptMessagesFromBeforeRestart() {
 	me, err := p.session.User("@me")
 	if err != nil {
 		log.Printf("Commissions: seed: look up own user: %v", err)
@@ -84,7 +79,7 @@ func (p *Poller) seed() {
 			if !ok || !site.ValidCommissionID(id) {
 				continue
 			}
-			p.sent[id] = &posting{messageID: m.ID, adopted: true}
+			p.sent[id] = &posting{messageID: m.ID, foundAtStartup: true}
 			break
 		}
 	}
@@ -125,7 +120,6 @@ func (p *Poller) post(ctx context.Context, c site.Commission) error {
 		}
 		sent = &posting{messageID: msg.ID}
 		p.sent[c.ID] = sent
-		// A thread started on a message shares its id, which is how the handler finds it later.
 		if _, err := p.session.MessageThreadStartComplex(p.channelID, msg.ID, &discordgo.ThreadStart{
 			Name:                threadName(c),
 			AutoArchiveDuration: threadArchiveMinutes,
@@ -145,8 +139,7 @@ func (p *Poller) post(ctx context.Context, c site.Commission) error {
 		sent.done = true
 	case errors.Is(err, site.ErrCommissionConflict):
 		sent.done = true
-		if sent.adopted {
-			// The site holds a different message. This one was not sent this run, so leave it.
+		if sent.foundAtStartup {
 			log.Printf("Commissions: site already has another message for %s; leaving %s", c.ID, sent.messageID)
 			return nil
 		}

@@ -27,13 +27,11 @@ type discordCall struct {
 	Body   map[string]any
 }
 
-// fakeDiscord answers Discord's REST API for the calls this feature makes.
 type fakeDiscord struct {
-	mu        sync.Mutex
-	calls     []discordCall
-	sendFails int
-	nextID    int
-	// history is what GET messages returns, newest first. historyFails makes that read fail.
+	mu           sync.Mutex
+	calls        []discordCall
+	sendFails    int
+	nextID       int
 	history      []map[string]any
 	historyFails bool
 }
@@ -75,7 +73,6 @@ func (f *fakeDiscord) snapshot() []discordCall {
 	return append([]discordCall(nil), f.calls...)
 }
 
-// count returns how many recorded calls match the method and a path suffix.
 func (f *fakeDiscord) count(method, suffix string) int {
 	n := 0
 	for _, c := range f.snapshot() {
@@ -111,15 +108,14 @@ type siteCall struct {
 	Method, Path, Actor, Body string
 }
 
-// fakeSite serves the commission admin API. postedStatus and eventStatus pick each reply by call number.
 type fakeSite struct {
-	mu           sync.Mutex
-	unposted     []site.Commission
-	postedStatus func(n int, id string) int
-	eventStatus  int
-	eventReply   string
-	calls        []siteCall
-	postedCalls  int
+	mu                 sync.Mutex
+	unposted           []site.Commission
+	postedStatusByCall func(n int, id string) int
+	eventStatusByCall  int
+	eventReply         string
+	calls              []siteCall
+	postedCalls        int
 }
 
 func (f *fakeSite) client(t *testing.T) *site.Client {
@@ -136,13 +132,13 @@ func (f *fakeSite) client(t *testing.T) *site.Client {
 			f.postedCalls++
 			id := strings.Split(r.URL.Path, "/")[3]
 			status := 200
-			if f.postedStatus != nil {
-				status = f.postedStatus(f.postedCalls, id)
+			if f.postedStatusByCall != nil {
+				status = f.postedStatusByCall(f.postedCalls, id)
 			}
 			w.WriteHeader(status)
 			w.Write([]byte(`{"error":"x"}`))
 		case strings.HasSuffix(r.URL.Path, "/events"):
-			status := f.eventStatus
+			status := f.eventStatusByCall
 			if status == 0 {
 				status = 200
 			}
@@ -175,7 +171,6 @@ func commission(id string) site.Commission {
 	}
 }
 
-// botMessage is a channel message in the shape Discord returns it.
 func botMessage(msgID, author, footer string) map[string]any {
 	return map[string]any{
 		"id": msgID, "channel_id": channel, "author": map[string]any{"id": author},

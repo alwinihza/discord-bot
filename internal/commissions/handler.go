@@ -37,7 +37,6 @@ func actingUser(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
-// IsManager is the permission check for every button and modal.
 func (h *Handler) IsManager(user string) bool { return user != "" && h.managers[user] }
 
 func ephemeral(s *discordgo.Session, i *discordgo.InteractionCreate, text string) {
@@ -83,9 +82,10 @@ func (h *Handler) HandleModal(s *discordgo.Session, i *discordgo.InteractionCrea
 
 func (h *Handler) openNoteModal(s *discordgo.Session, i *discordgo.InteractionCreate, a Action) {
 	label := "Note (optional)"
-	if a.Status == "quoted" {
+	switch a.Status {
+	case "quoted":
 		label = "Price or quote note (optional)"
-	} else if a.Status == "declined" {
+	case "declined":
 		label = "Reason (optional)"
 	}
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -152,7 +152,6 @@ func (h *Handler) apply(s *discordgo.Session, i *discordgo.InteractionCreate, a 
 	}
 }
 
-// ThreadLine is the audit line posted in the commission's thread.
 func ThreadLine(status, user, note string) string {
 	line := fmt.Sprintf("%s by <@%s>", StatusLabel(status), user)
 	if note != "" {

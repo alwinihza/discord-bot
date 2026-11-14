@@ -40,7 +40,6 @@ func parse(customID, prefix string) (Action, bool) {
 	return Action{ID: id, Status: status}, true
 }
 
-// needsNote lists the statuses whose button asks for an optional note first.
 func needsNote(status string) bool { return status == "quoted" || status == "declined" }
 
 // ParseManagerIDs reads a comma-separated list of Discord user ids.

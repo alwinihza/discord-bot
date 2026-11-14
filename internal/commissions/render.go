@@ -55,7 +55,6 @@ func kindLabel(kind string) string {
 	return humanize(kind)
 }
 
-// humanize turns "deposit_paid" or "contactHandle" into "Deposit paid" or "Contact handle".
 func humanize(key string) string {
 	var b strings.Builder
 	for n, r := range key {
