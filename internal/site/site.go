@@ -147,6 +147,10 @@ func (c *Client) call(ctx context.Context, method, user, prefix string, segments
 		}
 		path += url.PathEscape(seg)
 	}
+	return c.roundTrip(ctx, method, path, user, in, out, statusError)
+}
+
+func (c *Client) roundTrip(ctx context.Context, method, path, user string, in, out any, mapErr func(*http.Response, []byte) error) error {
 	var body io.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
@@ -180,7 +184,7 @@ func (c *Client) call(ctx context.Context, method, user, prefix string, segments
 		return fmt.Errorf("read site response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return statusError(resp, raw)
+		return mapErr(resp, raw)
 	}
 	if out == nil {
 		return nil
