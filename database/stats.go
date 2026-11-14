@@ -41,6 +41,29 @@ func (db *DB) SongChoices(ctx context.Context, query string, limit int) ([]model
 	return choices, rows.Err()
 }
 
+// ResolveSong resolves query as a song ID (from autocomplete) or, failing that,
+// as search text, picking the most-sung match.
+func (db *DB) ResolveSong(ctx context.Context, query string) (models.SongChoice, error) {
+	var c models.SongChoice
+	err := db.db.QueryRowContext(ctx,
+		"SELECT id, song_title, coalesce(artist, '') FROM karaoke_song WHERE id = ?", query).
+		Scan(&c.ID, &c.Title, &c.Artist)
+	if err == nil {
+		return c, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return c, fmt.Errorf("look up song id: %w", err)
+	}
+	choices, err := db.SongChoices(ctx, query, 1)
+	if err != nil {
+		return c, err
+	}
+	if len(choices) == 0 {
+		return c, ErrSongNotFound
+	}
+	return choices[0], nil
+}
+
 // SongStats resolves query as a song ID (from autocomplete) or, failing
 // that, as search text, picking the most-sung match.
 func (db *DB) SongStats(ctx context.Context, query string) (models.SongStats, error) {

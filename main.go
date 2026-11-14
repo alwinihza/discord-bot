@@ -35,9 +35,9 @@ func run() error {
 
 	var siteClient *site.Client
 	if url, secret := os.Getenv("SITE_ADMIN_URL"), os.Getenv("SITE_ADMIN_SECRET"); url != "" && secret != "" {
-		siteClient = site.NewClient(url, secret)
+		siteClient = site.NewClient(url, secret, envOr("SITE_PUBLIC_URL", "https://fionastation.vercel.app"))
 	} else {
-		log.Println("SITE_ADMIN_URL or SITE_ADMIN_SECRET is not set, /playlist-mod is disabled")
+		log.Println("SITE_ADMIN_URL or SITE_ADMIN_SECRET is not set, /playlist-mod and /playlist are disabled")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -76,4 +76,11 @@ func run() error {
 	<-ctx.Done()
 	log.Println("Shutting down")
 	return nil
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

@@ -62,7 +62,7 @@ func newSite(t *testing.T, h http.HandlerFunc) *site.Client {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return site.NewClient(srv.URL, "secret")
+	return site.NewClient(srv.URL, "secret", "https://fio.example")
 }
 
 func summaryHandler(name string) http.HandlerFunc {
