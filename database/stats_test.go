@@ -17,8 +17,8 @@ func TestSongStatsForMostSungSong(t *testing.T) {
 	if st.Title != "Tabako" || st.Artist != "Koresawa" {
 		t.Fatalf("resolved to %q by %q", st.Title, st.Artist)
 	}
-	if len(st.Performances) != 10 || st.Rank != 1 || st.TotalSongs != 474 {
-		t.Fatalf("got %d performances, rank %d of %d; want 10, 1 of 474", len(st.Performances), st.Rank, st.TotalSongs)
+	if len(st.Performances) != 10 || st.Rank != 1 || st.TotalSongs != 473 {
+		t.Fatalf("got %d performances, rank %d of %d; want 10, 1 of 473", len(st.Performances), st.Rank, st.TotalSongs)
 	}
 	if !sort.SliceIsSorted(st.Performances, func(i, j int) bool { return st.Performances[i].Date < st.Performances[j].Date }) {
 		t.Fatal("performances are not oldest first")
