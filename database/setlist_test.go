@@ -58,8 +58,8 @@ func TestEveryStoredSetlistRoundTrips(t *testing.T) {
 		}
 	}
 	_, songs, _ := db.FetchSearchResult(ctx, "", 1, 1)
-	if songs != 908 {
-		t.Errorf("resaving everything left %d songs, want 908", songs)
+	if songs != 909 {
+		t.Errorf("resaving everything left %d songs, want 909", songs)
 	}
 	if n := countOriginals(); n != originals || n == 0 {
 		t.Errorf("resaving kept %d original titles, want %d", n, originals)

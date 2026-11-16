@@ -33,8 +33,8 @@ func TestReopenKeepsDataWithoutReseeding(t *testing.T) {
 			t.Fatal(err)
 		}
 		db.Close()
-		if videos != 63 || songs != 908 {
-			t.Fatalf("got %d videos and %d songs, want 63 and 908", videos, songs)
+		if videos != 64 || songs != 909 {
+			t.Fatalf("got %d videos and %d songs, want 64 and 909", videos, songs)
 		}
 	}
 }
