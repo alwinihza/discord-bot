@@ -13,24 +13,27 @@ import (
 	"github.com/alwinihza/discord-bot/models"
 )
 
-// Setlist returns a stream's title and songs in order; found is false when
+// Setlist returns a stream's details and songs in order; found is false when
 // the video is not in the database yet.
-func (db *DB) Setlist(ctx context.Context, videoID string) (title string, entries []setlist.Entry, found bool, err error) {
-	err = db.db.QueryRowContext(ctx, "SELECT video_title FROM karaoke_video WHERE video_url = ?", videoID).Scan(&title)
+func (db *DB) Setlist(ctx context.Context, videoID string) (video models.VideoInfo, entries []setlist.Entry, found bool, err error) {
+	video.ID = videoID
+	err = db.db.QueryRowContext(ctx, `
+		SELECT video_title, coalesce(published_at, ''), coalesce(thumbnail, '')
+		FROM karaoke_video WHERE video_url = ?`, videoID).Scan(&video.Title, &video.PublishedAt, &video.Thumbnail)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil, false, nil
+		return models.VideoInfo{}, nil, false, nil
 	}
 	if err != nil {
-		return "", nil, false, fmt.Errorf("look up video: %w", err)
+		return models.VideoInfo{}, nil, false, fmt.Errorf("look up video: %w", err)
 	}
 	songs, err := db.setlistRows(ctx, db.db, videoID)
 	if err != nil {
-		return "", nil, false, err
+		return models.VideoInfo{}, nil, false, err
 	}
 	for _, s := range songs {
 		entries = append(entries, s.Entry)
 	}
-	return title, entries, true, nil
+	return video, entries, true, nil
 }
 
 type storedSong struct {

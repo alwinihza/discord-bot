@@ -43,6 +43,7 @@ func (h *CommandHandler) GetCommandHandlers() map[string]func(s *discordgo.Sessi
 		"search":       h.Search,
 		"stats":        h.Stats,
 		"setlist":      h.Setlist,
+		"announce":     h.Announce,
 		"playlist-mod": h.PlaylistMod,
 		"playlist":     h.Playlist,
 	}

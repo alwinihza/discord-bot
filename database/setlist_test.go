@@ -108,3 +108,20 @@ func TestSaveSetlistAddsAndReplaces(t *testing.T) {
 		t.Errorf("new performance = %+v", last)
 	}
 }
+
+func TestSetlistReturnsStoredVideoDetails(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	want := models.VideoInfo{ID: "KANYG45JUlo", Title: "nyanyinyaa", PublishedAt: "2026-10-23 08:29:35+00", Thumbnail: "https://i.ytimg.com/vi/KANYG45JUlo/hq.jpg"}
+	entries, _ := setlist.Parse("00:10:00 | Halu | Feby Putri")
+	if _, err := db.SaveSetlist(ctx, want, entries); err != nil {
+		t.Fatal(err)
+	}
+	got, _, found, err := db.Setlist(ctx, want.ID)
+	if err != nil || !found {
+		t.Fatalf("Setlist = %v, %v", found, err)
+	}
+	if got != want {
+		t.Errorf("video = %+v, want %+v", got, want)
+	}
+}

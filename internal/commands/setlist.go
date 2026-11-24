@@ -39,7 +39,7 @@ func (h *CommandHandler) Setlist(s *discordgo.Session, i *discordgo.InteractionC
 
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
-	title, entries, found, err := h.db.Setlist(ctx, videoID)
+	video, entries, found, err := h.db.Setlist(ctx, videoID)
 	if err != nil {
 		log.Printf("Error loading setlist of %s: %v", videoID, err)
 		shared.RespondWithError(s, i, "Failed to load the setlist, please try again")
@@ -50,6 +50,7 @@ func (h *CommandHandler) Setlist(s *discordgo.Session, i *discordgo.InteractionC
 		shared.RespondWithError(s, i, "This setlist is too long to edit in Discord")
 		return
 	}
+	title := video.Title
 	if !found {
 		title = "New stream " + videoID
 	}
@@ -115,13 +116,12 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 
 	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
 	defer cancel()
-	_, _, found, err := h.db.Setlist(ctx, videoID)
+	video, _, found, err := h.db.Setlist(ctx, videoID)
 	if err != nil {
 		log.Printf("Error loading setlist of %s: %v", videoID, err)
 		fail("Failed to read the database, please try again.")
 		return
 	}
-	video := models.VideoInfo{ID: videoID}
 	if !found {
 		video, err = h.youtube.Fetch(ctx, videoID)
 		if err != nil {
@@ -146,13 +146,7 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 
 	msg := fmt.Sprintf("✅ Saved %d songs for **%s** (was %d).", len(entries), res.Title, len(res.Previous))
 	if res.Created && h.announceChannel != "" {
-		_, err := s.ChannelMessageSendEmbed(h.announceChannel, embeds.CreateNewStreamEmbed(video, entries))
-		if err != nil {
-			log.Printf("Error announcing %s: %v", videoID, err)
-			msg += "\n⚠️ Could not post the announcement, check the bot can send messages and embeds there."
-		} else {
-			msg += fmt.Sprintf("\n📣 Announced in <#%s>.", h.announceChannel)
-		}
+		msg += "\n" + h.postAnnouncement(s, video, entries)
 	}
 	if len(res.NewSongs) > 0 {
 		msg += "\nFirst time in the bot, check the spelling:\n- " + strings.Join(res.NewSongs, "\n- ")
@@ -163,6 +157,62 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 	})
 	if err != nil {
 		log.Printf("Error reporting saved setlist: %v", err)
+	}
+}
+
+func (h *CommandHandler) postAnnouncement(s *discordgo.Session, video models.VideoInfo, entries []setlist.Entry) string {
+	_, err := s.ChannelMessageSendEmbed(h.announceChannel, embeds.CreateNewStreamEmbed(video, entries))
+	if err != nil {
+		log.Printf("Error announcing %s: %v", video.ID, err)
+		return "⚠️ Could not post the announcement, check the bot can send messages and embeds there."
+	}
+	return fmt.Sprintf("📣 Announced in <#%s>.", h.announceChannel)
+}
+
+func (h *CommandHandler) Announce(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	var raw string
+	for _, opt := range i.ApplicationCommandData().Options {
+		if opt.Name == "video" {
+			raw = opt.StringValue()
+		}
+	}
+	videoID, ok := setlist.VideoID(raw)
+	if !ok {
+		shared.RespondWithError(s, i, fmt.Sprintf("%q is not a YouTube link or video ID", embeds.Truncate(raw, 100)))
+		return
+	}
+	if h.announceChannel == "" {
+		shared.RespondWithError(s, i, "Announcements are turned off, no channel is set.")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	video, entries, found, err := h.db.Setlist(ctx, videoID)
+	if err != nil {
+		log.Printf("Error loading setlist of %s: %v", videoID, err)
+		shared.RespondWithError(s, i, "Failed to load the setlist, please try again")
+		return
+	}
+	if !found || len(entries) == 0 {
+		shared.RespondWithError(s, i, "This stream has no setlist yet. Add it with `/setlist` first.")
+		return
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral},
+	})
+	if err != nil {
+		log.Printf("Error acknowledging announce: %v", err)
+		return
+	}
+	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: h.postAnnouncement(s, video, entries),
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		log.Printf("Error replying to announce: %v", err)
 	}
 }
 
