@@ -15,7 +15,10 @@ func TestNewStreamEmbedLinksEverySongAndFitsDiscord(t *testing.T) {
 	e := CreateNewStreamEmbed(video, []setlist.Entry{
 		{Timestamp: "00:13:22", Title: "Halu", Artist: "Feby Putri"},
 		{Timestamp: "01:02:03", Title: "Samurai Heart [Some Like It Hot!!]", Artist: "SPYAIR", Version: "short"},
-	})
+	}, "")
+	if len(e.Fields) != 0 {
+		t.Errorf("no credit: fields = %v, want none", e.Fields)
+	}
 	for _, want := range []string{
 		"`00:13:22` [Halu - Feby Putri](https://youtu.be/KANYG45JUlo?t=802)",
 		"[Samurai Heart (Some Like It Hot!!) (short) - SPYAIR](https://youtu.be/KANYG45JUlo?t=3723)",
@@ -32,8 +35,22 @@ func TestNewStreamEmbedLinksEverySongAndFitsDiscord(t *testing.T) {
 	for n := range 200 {
 		many = append(many, setlist.Entry{Timestamp: fmt.Sprintf("%02d:%02d:00", n/60, n%60), Title: strings.Repeat("long title ", 8), Artist: "Someone"})
 	}
-	e = CreateNewStreamEmbed(video, many)
+	e = CreateNewStreamEmbed(video, many, "")
 	if len(e.Description) > 4096 || !strings.Contains(e.Description, "more") {
 		t.Errorf("200 songs: %d chars, ends %q", len(e.Description), e.Description[len(e.Description)-30:])
+	}
+}
+
+func TestNewStreamEmbedCreditsTheTimestampPoster(t *testing.T) {
+	video := models.VideoInfo{ID: "KANYG45JUlo", Title: "nyanyinyaa"}
+	entries := []setlist.Entry{{Timestamp: "00:13:22", Title: "Halu", Artist: "Feby Putri"}}
+
+	e := CreateNewStreamEmbed(video, entries, "  <@123>  ")
+	if len(e.Fields) != 1 || e.Fields[0].Name != "Timestamps by" || e.Fields[0].Value != "<@123>" {
+		t.Errorf("fields = %v, want one Timestamps by field valued <@123>", e.Fields)
+	}
+
+	if e = CreateNewStreamEmbed(video, entries, "   "); len(e.Fields) != 0 {
+		t.Errorf("blank credit: fields = %v, want none", e.Fields)
 	}
 }

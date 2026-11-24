@@ -146,7 +146,7 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 
 	msg := fmt.Sprintf("✅ Saved %d songs for **%s** (was %d).", len(entries), res.Title, len(res.Previous))
 	if res.Created && h.announceChannel != "" {
-		msg += "\n" + h.postAnnouncement(s, video, entries)
+		msg += "\n" + h.postAnnouncement(s, video, entries, "")
 	}
 	if len(res.NewSongs) > 0 {
 		msg += "\nFirst time in the bot, check the spelling:\n- " + strings.Join(res.NewSongs, "\n- ")
@@ -160,8 +160,8 @@ func (h *CommandHandler) SetlistSubmit(s *discordgo.Session, i *discordgo.Intera
 	}
 }
 
-func (h *CommandHandler) postAnnouncement(s *discordgo.Session, video models.VideoInfo, entries []setlist.Entry) string {
-	_, err := s.ChannelMessageSendEmbed(h.announceChannel, embeds.CreateNewStreamEmbed(video, entries))
+func (h *CommandHandler) postAnnouncement(s *discordgo.Session, video models.VideoInfo, entries []setlist.Entry, credit string) string {
+	_, err := s.ChannelMessageSendEmbed(h.announceChannel, embeds.CreateNewStreamEmbed(video, entries, credit))
 	if err != nil {
 		log.Printf("Error announcing %s: %v", video.ID, err)
 		return "⚠️ Could not post the announcement, check the bot can send messages and embeds there."
@@ -170,10 +170,13 @@ func (h *CommandHandler) postAnnouncement(s *discordgo.Session, video models.Vid
 }
 
 func (h *CommandHandler) Announce(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var raw string
+	var raw, credit string
 	for _, opt := range i.ApplicationCommandData().Options {
-		if opt.Name == "video" {
+		switch opt.Name {
+		case "video":
 			raw = opt.StringValue()
+		case "credit":
+			credit = opt.StringValue()
 		}
 	}
 	videoID, ok := setlist.VideoID(raw)
@@ -208,7 +211,7 @@ func (h *CommandHandler) Announce(s *discordgo.Session, i *discordgo.Interaction
 		return
 	}
 	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: h.postAnnouncement(s, video, entries),
+		Content: h.postAnnouncement(s, video, entries, credit),
 		Flags:   discordgo.MessageFlagsEphemeral,
 	})
 	if err != nil {

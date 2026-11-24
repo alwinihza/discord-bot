@@ -37,10 +37,16 @@ var Definitions = []*discordgo.ApplicationCommand{
 	{
 		Name: "announce", Description: "Post the new-stream announcement for a saved setlist (mods)", Contexts: guildOnly,
 		DefaultMemberPermissions: &modsOnly,
-		Options: []*discordgo.ApplicationCommandOption{{
-			Type: discordgo.ApplicationCommandOptionString, Name: "video", Description: "YouTube link or video ID",
-			Required: true,
-		}},
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type: discordgo.ApplicationCommandOptionString, Name: "video", Description: "YouTube link or video ID",
+				Required: true,
+			},
+			{
+				Type: discordgo.ApplicationCommandOptionString, Name: "credit", Description: "Who posted the timestamps, a name or @mention",
+				MaxLength: 100,
+			},
+		},
 	},
 	{
 		Name: "playlist", Description: "Manage your shared playlists", Contexts: guildOnly,

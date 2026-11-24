@@ -13,8 +13,8 @@ import (
 const maxDescription = 4096
 
 // CreateNewStreamEmbed announces a stream with its songs, each linked to
-// the moment it starts.
-func CreateNewStreamEmbed(video models.VideoInfo, entries []setlist.Entry) *discordgo.MessageEmbed {
+// the moment it starts, and credits whoever posted the timestamps.
+func CreateNewStreamEmbed(video models.VideoInfo, entries []setlist.Entry, credit string) *discordgo.MessageEmbed {
 	url := "https://youtu.be/" + video.ID
 	var b strings.Builder
 	for n, e := range entries {
@@ -33,6 +33,9 @@ func CreateNewStreamEmbed(video models.VideoInfo, entries []setlist.Entry) *disc
 		Description: b.String(),
 		Color:       embedColor,
 		Footer:      &discordgo.MessageEmbedFooter{Text: fmt.Sprintf("%d songs · new karaoke stream", len(entries))},
+	}
+	if credit = strings.TrimSpace(credit); credit != "" {
+		embed.Fields = []*discordgo.MessageEmbedField{{Name: "Timestamps by", Value: credit}}
 	}
 	if video.Thumbnail != "" {
 		embed.Image = &discordgo.MessageEmbedImage{URL: video.Thumbnail}

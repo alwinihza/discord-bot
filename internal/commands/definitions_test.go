@@ -29,7 +29,7 @@ func TestPlaylistModIsModsOnlyAndGuildOnly(t *testing.T) {
 	t.Fatal("playlist-mod is not defined")
 }
 
-func TestAnnounceIsModsOnlyGuildOnlyWithRequiredVideo(t *testing.T) {
+func TestAnnounceIsModsOnlyGuildOnlyWithRequiredVideoAndOptionalCredit(t *testing.T) {
 	for _, def := range Definitions {
 		if def.Name != "announce" {
 			continue
@@ -40,9 +40,13 @@ func TestAnnounceIsModsOnlyGuildOnlyWithRequiredVideo(t *testing.T) {
 		if def.Contexts == nil || len(*def.Contexts) != 1 || (*def.Contexts)[0] != discordgo.InteractionContextGuild {
 			t.Errorf("Contexts = %v, want guild only", def.Contexts)
 		}
-		if len(def.Options) != 1 || def.Options[0].Name != "video" || !def.Options[0].Required ||
+		if len(def.Options) != 2 || def.Options[0].Name != "video" || !def.Options[0].Required ||
 			def.Options[0].Type != discordgo.ApplicationCommandOptionString {
-			t.Errorf("Options = %v, want one required string option video", def.Options)
+			t.Errorf("Options = %v, want a required string option video first", def.Options)
+			return
+		}
+		if c := def.Options[1]; c.Name != "credit" || c.Required || c.Type != discordgo.ApplicationCommandOptionString {
+			t.Errorf("Options[1] = %v, want an optional string option credit", c)
 		}
 		return
 	}
