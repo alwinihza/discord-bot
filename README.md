@@ -151,6 +151,18 @@ curl -i -X POST http://127.0.0.1:8080/hooks/obs \
 A wrong or missing secret gets `401`, an unknown event or bad JSON gets `400`, and a body over
 1 KiB gets `413`. `GET /healthz` answers `ok` without auth.
 
+### Install the OBS script
+
+The script is `scripts/obs/fiona-live.lua`, and it needs nothing else installed.
+
+1. In OBS, open **Tools > Scripts**, press **+**, and pick `fiona-live.lua`.
+2. Leave **Webhook URL** at `https://hooks.alwinihza.com/hooks/obs`, and paste the
+   `WEBHOOK_SECRET` into **Secret**.
+3. Start streaming. The **Script Log** button on the same window shows `sent started`.
+
+On Windows the script starts `curl.exe` with no console window and does not wait for it, so OBS
+never stalls. If the request fails, the bot posts nothing, and the bot's log is the place to look.
+
 ## Re-seed from scratch
 
 The seed only runs when the database is empty. To load a changed `seed.sql`,
