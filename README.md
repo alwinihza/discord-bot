@@ -114,13 +114,32 @@ until the next restart. Messages posted before the footer changed to this format
 
 ## Go-live webhook (OBS)
 
-An OBS script POSTs to the bot when Fiona presses Start or Stop Streaming. Today the bot only
-logs the event as `go-live webhook: started` or `stopped`. Posting to Discord comes later.
+An OBS script POSTs to the bot when Fiona presses Start or Stop Streaming.
 
-The webhook turns on when `WEBHOOK_SECRET` and `LIVE_CHANNEL_ID` are both set. Otherwise the bot
-logs that it is disabled and runs as before. It listens on `WEBHOOK_ADDR` (default `:8080`).
-`YOUTUBE_CHANNEL_ID` is Fiona's `UC...` channel id, which the stream lookup will need.
-`LIVE_PING_ROLE_ID` is an optional role to ping. `WEBHOOK_BIND` is the host address compose
+- On `started`, the bot asks YouTube for the live video on `YOUTUBE_CHANNEL_ID`. It asks at
+  once, then every 15 seconds for up to 5 minutes, because YouTube can take a while to mark a
+  broadcast live. When it finds the video, it posts a "Live now" embed in `LIVE_CHANNEL_ID`
+  that links to the stream, with a ping for `LIVE_PING_ROLE_ID` when that is set. If nothing is
+  found in 5 minutes, it posts nothing and logs `no live broadcast found for channel <id>`.
+  This is the expected result for a private or unlisted test stream.
+- On `stopped`, the bot stops looking and edits the live message to "Stream ended · 2h 14m",
+  timed from when the message was posted. The link now leads to the VOD and the ping is
+  removed.
+
+The bot posts one message per stream. It keeps no state of its own: on each event it reads the
+last 50 messages in the live channel and finds its newest live or ended embed by the embed
+footer. A second `started` while a live message is open does nothing, a restart mid-stream
+still lets `stopped` edit the right message, and starting again into a broadcast whose message
+already ended posts nothing. The bot needs View Channel, Send Messages, Embed Links and Read
+Message History in the live channel.
+
+Each lookup is one `search.list` call. A stream that takes the full 5 minutes to appear costs
+at most 21 calls.
+
+The webhook turns on when `WEBHOOK_SECRET`, `LIVE_CHANNEL_ID` and `YOUTUBE_CHANNEL_ID` are all
+set. Otherwise the bot logs that it is disabled and runs as before. `YOUTUBE_CHANNEL_ID` is
+Fiona's `UC...` channel id, and `YOUTUBE_API_KEY` must be set for the lookup to work. It
+listens on `WEBHOOK_ADDR` (default `:8080`). `WEBHOOK_BIND` is the host address compose
 publishes the port on (default `127.0.0.1`).
 
 ```sh
