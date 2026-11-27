@@ -56,6 +56,25 @@ func TestHandler(t *testing.T) {
 	}
 }
 
+func TestEmptySecretRejectsEverything(t *testing.T) {
+	called := false
+	h := Handler("", func(Event) { called = true })
+	for _, auth := range []string{"", "Bearer ", "Bearer x"} {
+		req := httptest.NewRequest("POST", "/hooks/obs", strings.NewReader(`{"event":"started"}`))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 401 {
+			t.Errorf("auth %q: status = %d, want 401", auth, rec.Code)
+		}
+	}
+	if called {
+		t.Error("onEvent ran with an empty secret")
+	}
+}
+
 func TestHealthzBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	Handler(testSecret, func(Event) {}).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))

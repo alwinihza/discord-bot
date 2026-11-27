@@ -23,7 +23,8 @@ const (
 const maxBodyBytes = 1 << 10
 
 // Handler serves POST /hooks/obs and GET /healthz. A request to /hooks/obs
-// needs the header "Authorization: Bearer <secret>". onEvent runs on the
+// needs the header "Authorization: Bearer <secret>". An empty secret rejects
+// every request. onEvent runs on the
 // request goroutine before the 202 goes out, so it must not block: start a
 // goroutine for slow work.
 func Handler(secret string, onEvent func(Event)) http.Handler {
@@ -33,7 +34,7 @@ func Handler(secret string, onEvent func(Event)) http.Handler {
 	})
 	mux.HandleFunc("POST /hooks/obs", func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+		if !ok || secret == "" || subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
 			log.Printf("go-live webhook: rejected request from %s: missing or wrong secret", r.RemoteAddr)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
