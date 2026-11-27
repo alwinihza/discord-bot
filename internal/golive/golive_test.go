@@ -311,9 +311,11 @@ func TestFoundVideoAlreadyEndedPostsNothing(t *testing.T) {
 	if s, _, _ := r.d.counts(); s != 0 {
 		t.Errorf("posts = %d, want 0", s)
 	}
-	if got := r.yt.count(); got != 1 {
-		t.Errorf("lookups = %d, want 1: the search should end", got)
+	if got := r.yt.count(); got < 2 {
+		t.Errorf("lookups = %d, want the search to keep going past a stale ended video", got)
 	}
+	r.yt.setLive("v2")
+	waitFor(t, "the new broadcast's post", func() bool { s, _, _ := r.d.counts(); return s == 1 })
 
 	t.Run("a different video after an ended one posts", func(t *testing.T) {
 		r := newRig(t, "v2", "", time.Minute, ended)

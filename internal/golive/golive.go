@@ -187,8 +187,10 @@ func (a *Announcer) lookup(ctx context.Context) bool {
 	case kind == embeds.Live:
 		return true
 	case kind == embeds.Ended && last.ID == id:
+		// Keep searching: search.list can report the old broadcast as live
+		// for a while after Fiona restarts into a new one.
 		log.Printf("go-live: %s already ended, not posting it again", id)
-		return true
+		return false
 	}
 
 	video, err := a.youtube.Fetch(callCtx, id)
