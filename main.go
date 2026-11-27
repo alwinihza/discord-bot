@@ -13,6 +13,7 @@ import (
 	"github.com/alwinihza/discord-bot/database"
 	"github.com/alwinihza/discord-bot/internal/commissions"
 	"github.com/alwinihza/discord-bot/internal/site"
+	"github.com/alwinihza/discord-bot/internal/webhook"
 	"github.com/alwinihza/discord-bot/internal/youtube"
 	"github.com/alwinihza/discord-bot/pkg/state"
 )
@@ -88,6 +89,24 @@ func run() error {
 		return err
 	}
 	defer discordBot.Stop()
+
+	if secret, channel := os.Getenv("WEBHOOK_SECRET"), os.Getenv("LIVE_CHANNEL_ID"); secret == "" || channel == "" {
+		log.Println("WEBHOOK_SECRET or LIVE_CHANNEL_ID is not set, the OBS go-live webhook is disabled")
+	} else {
+		if os.Getenv("YOUTUBE_CHANNEL_ID") == "" {
+			log.Println("YOUTUBE_CHANNEL_ID is not set, go-live posts will not find the stream")
+		}
+		addr := envOr("WEBHOOK_ADDR", ":8080")
+		handler := webhook.Handler(secret, func(e webhook.Event) {
+			log.Printf("go-live webhook: %s", e)
+		})
+		go func() {
+			log.Printf("OBS go-live webhook listening on %s", addr)
+			if err := webhook.Serve(ctx, addr, handler); err != nil {
+				log.Printf("OBS go-live webhook stopped: %v", err)
+			}
+		}()
+	}
 
 	log.Println("Bot is running, press Ctrl+C to stop")
 	<-ctx.Done()
