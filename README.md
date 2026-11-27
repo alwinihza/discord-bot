@@ -139,11 +139,13 @@ at most 21 calls.
 The webhook turns on when `WEBHOOK_SECRET`, `LIVE_CHANNEL_ID` and `YOUTUBE_CHANNEL_ID` are all
 set. Otherwise the bot logs that it is disabled and runs as before. `YOUTUBE_CHANNEL_ID` is
 Fiona's `UC...` channel id, and `YOUTUBE_API_KEY` must be set for the lookup to work. It
-listens on `WEBHOOK_ADDR` (default `:8080`). `WEBHOOK_BIND` is the host address compose
-publishes the port on (default `127.0.0.1`).
+listens on `WEBHOOK_ADDR` (default `:8080`) inside the container, and compose publishes no host
+port. On devbox, `docker-compose.override.yml` puts the bot on the shared `web` network as
+`discord-bot`, and the server-wide Caddy (`~/proxy/Caddyfile`) forwards only
+`https://hooks.alwinihza.com/hooks/obs` to it.
 
 ```sh
-curl -i -X POST http://127.0.0.1:8080/hooks/obs \
+curl -i -X POST https://hooks.alwinihza.com/hooks/obs \
   -H "Authorization: Bearer $WEBHOOK_SECRET" \
   -d '{"event":"started"}'
 ```

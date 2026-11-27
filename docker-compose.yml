@@ -17,8 +17,6 @@ services:
       LIVE_CHANNEL_ID: ${LIVE_CHANNEL_ID:-}
       YOUTUBE_CHANNEL_ID: ${YOUTUBE_CHANNEL_ID:-}
       LIVE_PING_ROLE_ID: ${LIVE_PING_ROLE_ID:-}
-    ports:
-      - "${WEBHOOK_BIND:-127.0.0.1}:8080:8080"
     volumes:
       - botdata:/data
     restart: always
