@@ -112,6 +112,26 @@ reads `Commission <id>`), so it tells the site about the existing message instea
 again. If that history read fails, the bot logs it and carries on, and a duplicate is possible
 until the next restart. Messages posted before the footer changed to this format are not adopted.
 
+## Go-live webhook (OBS)
+
+An OBS script POSTs to the bot when Fiona presses Start or Stop Streaming. Today the bot only
+logs the event as `go-live webhook: started` or `stopped`. Posting to Discord comes later.
+
+The webhook turns on when `WEBHOOK_SECRET` and `LIVE_CHANNEL_ID` are both set. Otherwise the bot
+logs that it is disabled and runs as before. It listens on `WEBHOOK_ADDR` (default `:8080`).
+`YOUTUBE_CHANNEL_ID` is Fiona's `UC...` channel id, which the stream lookup will need.
+`LIVE_PING_ROLE_ID` is an optional role to ping. `WEBHOOK_BIND` is the host address compose
+publishes the port on (default `127.0.0.1`).
+
+```sh
+curl -i -X POST http://127.0.0.1:8080/hooks/obs \
+  -H "Authorization: Bearer $WEBHOOK_SECRET" \
+  -d '{"event":"started"}'
+```
+
+A wrong or missing secret gets `401`, an unknown event or bad JSON gets `400`, and a body over
+1 KiB gets `413`. `GET /healthz` answers `ok` without auth.
+
 ## Re-seed from scratch
 
 The seed only runs when the database is empty. To load a changed `seed.sql`,
