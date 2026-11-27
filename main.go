@@ -12,6 +12,7 @@ import (
 	"github.com/alwinihza/discord-bot/bot"
 	"github.com/alwinihza/discord-bot/database"
 	"github.com/alwinihza/discord-bot/internal/commissions"
+	"github.com/alwinihza/discord-bot/internal/golive"
 	"github.com/alwinihza/discord-bot/internal/site"
 	"github.com/alwinihza/discord-bot/internal/webhook"
 	"github.com/alwinihza/discord-bot/internal/youtube"
@@ -81,7 +82,8 @@ func run() error {
 		}
 	}()
 
-	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), youtube.NewClient(os.Getenv("YOUTUBE_API_KEY")), siteClient, commissionsConfig)
+	yt := youtube.NewClient(os.Getenv("YOUTUBE_API_KEY"))
+	discordBot, err := bot.NewBot(token, db, pm, os.Getenv("ANNOUNCE_CHANNEL_ID"), yt, siteClient, commissionsConfig)
 	if err != nil {
 		return err
 	}
@@ -90,16 +92,17 @@ func run() error {
 	}
 	defer discordBot.Stop()
 
-	if secret, channel := os.Getenv("WEBHOOK_SECRET"), os.Getenv("LIVE_CHANNEL_ID"); secret == "" || channel == "" {
-		log.Println("WEBHOOK_SECRET or LIVE_CHANNEL_ID is not set, the OBS go-live webhook is disabled")
+	secret, liveChannel, ytChannel := os.Getenv("WEBHOOK_SECRET"), os.Getenv("LIVE_CHANNEL_ID"), os.Getenv("YOUTUBE_CHANNEL_ID")
+	if secret == "" || liveChannel == "" || ytChannel == "" {
+		log.Println("WEBHOOK_SECRET, LIVE_CHANNEL_ID or YOUTUBE_CHANNEL_ID is not set, the OBS go-live webhook is disabled")
 	} else {
-		if os.Getenv("YOUTUBE_CHANNEL_ID") == "" {
-			log.Println("YOUTUBE_CHANNEL_ID is not set, go-live posts will not find the stream")
-		}
+		announcer := golive.New(golive.Config{
+			ChannelID: liveChannel, YouTubeChannelID: ytChannel, PingRoleID: os.Getenv("LIVE_PING_ROLE_ID"),
+			SearchInterval: golive.SearchInterval, SearchWindow: golive.SearchWindow,
+		}, golive.Session{Session: discordBot.Session()}, yt)
+		go announcer.Run(ctx)
 		addr := envOr("WEBHOOK_ADDR", ":8080")
-		handler := webhook.Handler(secret, func(e webhook.Event) {
-			log.Printf("go-live webhook: %s", e)
-		})
+		handler := webhook.Handler(secret, announcer.OnEvent)
 		go func() {
 			log.Printf("OBS go-live webhook listening on %s", addr)
 			if err := webhook.Serve(ctx, addr, handler); err != nil {

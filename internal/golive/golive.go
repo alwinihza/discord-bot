@@ -18,6 +18,9 @@ import (
 )
 
 const (
+	SearchInterval = 15 * time.Second
+	SearchWindow   = 5 * time.Minute
+
 	historyLimit = 50
 	callTimeout  = 10 * time.Second
 	eventBuffer  = 8

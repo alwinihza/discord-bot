@@ -70,6 +70,10 @@ func (b *Bot) Start() error {
 	return nil
 }
 
+// Session is the bot's Discord session, for features that run outside
+// interactions.
+func (b *Bot) Session() *discordgo.Session { return b.session }
+
 func (b *Bot) Stop() error {
 	if b.stopPoller != nil {
 		b.stopPoller()
