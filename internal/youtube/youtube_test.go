@@ -59,3 +59,50 @@ func TestFetchAPIErrorIsNotMissingVideo(t *testing.T) {
 		t.Fatalf("err = %v, want a 403 error", err)
 	}
 }
+
+func serveSearch(t *testing.T, status int, body string) *Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Goog-Api-Key") != "secret-key" {
+			t.Errorf("key header = %q", r.Header.Get("X-Goog-Api-Key"))
+		}
+		if strings.Contains(r.URL.String(), "secret-key") {
+			t.Errorf("key leaked into URL %q", r.URL)
+		}
+		q := r.URL.Query()
+		want := map[string]string{"part": "id", "channelId": "UCfiona", "eventType": "live", "type": "video"}
+		for k, v := range want {
+			if q.Get(k) != v {
+				t.Errorf("%s = %q, want %q", k, q.Get(k), v)
+			}
+		}
+		w.WriteHeader(status)
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return &Client{key: "secret-key", searchURL: srv.URL}
+}
+
+func TestActiveLiveVideo(t *testing.T) {
+	c := serveSearch(t, http.StatusOK, `{"items":[{"id":{"kind":"youtube#video","videoId":"LIVE1234567"}}]}`)
+	id, found, err := c.ActiveLiveVideo(context.Background(), "UCfiona")
+	if err != nil || !found || id != "LIVE1234567" {
+		t.Fatalf("got %q, %v, %v", id, found, err)
+	}
+}
+
+func TestActiveLiveVideoNotLive(t *testing.T) {
+	c := serveSearch(t, http.StatusOK, `{"items":[]}`)
+	id, found, err := c.ActiveLiveVideo(context.Background(), "UCfiona")
+	if err != nil || found || id != "" {
+		t.Fatalf("got %q, %v, %v", id, found, err)
+	}
+}
+
+func TestActiveLiveVideoAPIError(t *testing.T) {
+	c := serveSearch(t, http.StatusForbidden, `{"error":{"code":403,"reason":"quotaExceeded"}}`)
+	_, found, err := c.ActiveLiveVideo(context.Background(), "UCfiona")
+	if err == nil || found || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("found = %v, err = %v, want a 403 error", found, err)
+	}
+}

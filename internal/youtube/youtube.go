@@ -1,5 +1,5 @@
-// Package youtube reads a video's title and publish date from the YouTube
-// Data API.
+// Package youtube reads a video's title and publish date, and finds a
+// channel's live broadcast, from the YouTube Data API.
 package youtube
 
 import (
@@ -8,23 +8,28 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/alwinihza/discord-bot/models"
 )
 
-const apiURL = "https://www.googleapis.com/youtube/v3/videos"
+const (
+	apiURL    = "https://www.googleapis.com/youtube/v3/videos"
+	searchURL = "https://www.googleapis.com/youtube/v3/search"
+)
 
 // ErrNotFound means the video is deleted, private or never existed.
 var ErrNotFound = errors.New("video not found")
 
 type Client struct {
-	key string
-	url string
+	key       string
+	url       string
+	searchURL string
 }
 
 func NewClient(key string) *Client {
-	return &Client{key: key, url: apiURL}
+	return &Client{key: key, url: apiURL, searchURL: searchURL}
 }
 
 func (c *Client) Fetch(ctx context.Context, id string) (models.VideoInfo, error) {
@@ -64,4 +69,40 @@ func (c *Client) Fetch(ctx context.Context, id string) (models.VideoInfo, error)
 		PublishedAt: snippet.PublishedAt.UTC().Format("2006-01-02 15:04:05") + "+00",
 		Thumbnail:   "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg",
 	}, nil
+}
+
+// ActiveLiveVideo returns the id of the channel's broadcast that is live now.
+// found is false when the channel is not live.
+func (c *Client) ActiveLiveVideo(ctx context.Context, channelID string) (videoID string, found bool, err error) {
+	q := url.Values{"part": {"id"}, "channelId": {channelID}, "eventType": {"live"}, "type": {"video"}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.searchURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return "", false, err
+	}
+	req.Header.Set("X-Goog-Api-Key", c.key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", false, fmt.Errorf("call YouTube search: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", false, fmt.Errorf("call YouTube search: %s", resp.Status)
+	}
+
+	var body struct {
+		Items []struct {
+			ID struct {
+				VideoID string `json:"videoId"`
+			} `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", false, fmt.Errorf("read YouTube search response: %w", err)
+	}
+	for _, item := range body.Items {
+		if item.ID.VideoID != "" {
+			return item.ID.VideoID, true, nil
+		}
+	}
+	return "", false, nil
 }
